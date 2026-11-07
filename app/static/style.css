@@ -1,0 +1,203 @@
+:root {
+  --slip: #e4edf0;
+  --paper: #f3f7f8;
+  --ink: #14304a;
+  --steel: #46596a;
+  --rule: #b4c6cf;
+  --void: #a8231c;
+  --cleared: #17634c;
+  --caution: #7c5100;
+  --display: "Barlow Condensed", "Bahnschrift", "Arial Narrow", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--slip);
+  color: var(--ink);
+  font: 400 1rem/1.5 var(--body);
+}
+
+h1, h2, h3, .spent { font-family: var(--display); }
+h2 { margin: 0 0 .75rem; font-size: 1.6rem; font-weight: 600; line-height: 1.15; }
+h3 { margin: 1rem 0 .25rem; font-size: 1.15rem; font-weight: 600; }
+
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 1.25rem clamp(1rem, 4vw, 3rem) .5rem;
+}
+.brand h1 { margin: 0; font-size: 2.1rem; font-weight: 700; line-height: 1; }
+.brand p { margin: .25rem 0 0; color: var(--steel); }
+
+/* The meter is the page's headline: the product in one glance. */
+.meter { padding: .75rem clamp(1rem, 4vw, 3rem) 1.25rem; }
+.meter-figures { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.spent { margin: 0; font-size: clamp(1.7rem, 4.5vw, 2.8rem); font-weight: 600; line-height: 1.1; }
+.spent span { font-variant-numeric: tabular-nums; }
+.meter-track {
+  height: 1rem;
+  margin: .5rem 0 .75rem;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+}
+.meter-fill { width: 0; height: 100%; background: var(--ink); transition: width .3s ease-out; }
+.meter.over .meter-fill { background: var(--void); }
+
+.tally { display: flex; flex-wrap: wrap; gap: .25rem 2.5rem; margin: 0; }
+.tally div { display: flex; gap: .5rem; align-items: baseline; }
+.tally dt { color: var(--steel); }
+.tally dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+#saved { color: var(--cleared); }
+
+main { background: var(--paper); border-top: 2px solid var(--ink); }
+.room {
+  display: grid;
+  grid-template-columns: minmax(280px, 23rem) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 3rem;
+}
+
+label { display: block; margin: .75rem 0 .25rem; font-weight: 600; }
+select, textarea, input[type="number"] {
+  width: 100%;
+  padding: .5rem .6rem;
+  border: 1px solid var(--steel);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+textarea { resize: vertical; }
+
+input[type="range"] { display: block; width: 100%; margin: .35rem 0 0; accent-color: var(--ink); cursor: pointer; }
+.level-ticks { display: flex; justify-content: space-between; gap: .5rem; color: var(--steel); font-size: .92rem; }
+.level-ticks .current { color: var(--ink); font-weight: 600; }
+
+button { font: 600 1rem var(--body); cursor: pointer; }
+button[type="submit"], .secondary {
+  width: 100%;
+  margin-top: .75rem;
+  padding: .65rem 1rem;
+  border: 2px solid var(--ink);
+  border-radius: 2px;
+}
+button[type="submit"] { background: var(--ink); color: #fff; }
+.secondary { background: transparent; color: var(--ink); margin-top: 1.25rem; }
+#roast-send { margin-top: .9rem; }
+#use-anyway { margin-top: .5rem; }
+.recommend { margin: .75rem 0 0; padding-left: .75rem; border-left: 3px solid var(--cleared); font-weight: 500; }
+button:disabled { opacity: .6; cursor: progress; }
+.quiet {
+  padding: .25rem .1rem;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+:focus-visible { outline: 3px solid #2b6cb0; outline-offset: 2px; }
+
+.examples { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .6rem; color: var(--steel); }
+.chip { padding: .2rem .65rem; border: 1px solid var(--steel); border-radius: 2px; background: #fff; color: var(--ink); font-weight: 500; }
+
+.toggle { display: flex; align-items: center; gap: .55rem; margin-top: 1.5rem; }
+.toggle input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--ink); }
+.hint { margin: .2rem 0 0; color: var(--steel); font-size: .92rem; }
+
+.form-status { min-height: 1.5rem; margin: .4rem 0 0; font-weight: 500; }
+.form-status.bad { color: var(--void); }
+.reply { margin: .25rem 0 0; padding: .6rem .75rem; border-left: 3px solid var(--rule); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow: auto; }
+
+.ledger-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { padding: .35rem .6rem .35rem 0; border-bottom: 2px solid var(--ink); text-align: left; font-weight: 600; white-space: nowrap; }
+td { padding: .6rem .6rem .6rem 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.num { text-align: right; }
+th:last-child, td.status { padding-left: 1.25rem; }
+td.status { white-space: normal; min-width: 8.5rem; }
+td.prompt { min-width: 8rem; max-width: 12rem; white-space: normal; overflow-wrap: anywhere; }
+.board { margin-top: 2rem; }
+.board .hint { max-width: 62ch; margin-top: .6rem; }
+
+/* Rubber stamps: the one loud thing on the page. */
+.stamp {
+  display: inline-block;
+  padding: .05rem .5rem;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  font: 700 1.05rem/1.3 var(--display);
+  transform: rotate(-2deg);
+}
+.stamp.ok { border-color: transparent; color: var(--steel); font-weight: 600; transform: none; padding-left: 0; }
+.stamp.overkill, .stamp.refused { color: var(--caution); }
+.stamp.downshifted, .stamp.roast { color: var(--cleared); }
+.stamp.blocked, .stamp.stopped, .stamp.error { color: var(--void); }
+tr.new .stamp:not(.ok) { animation: stamp .22s ease-out; }
+@keyframes stamp {
+  from { opacity: 0; transform: rotate(-7deg) scale(1.5); }
+  to { opacity: 1; transform: rotate(-2deg) scale(1); }
+}
+.row-note { display: block; margin-top: .2rem; color: var(--steel); font-size: .9rem; }
+
+.empty { margin: 1rem 0; color: var(--steel); }
+.why { margin-top: 1.5rem; padding-left: .9rem; border-left: 4px solid var(--ink); }
+.why h3 { margin-top: 0; }
+.why p { margin: .15rem 0; max-width: 62ch; }
+
+/* Roast history sits above the ledger and stays capped so Live calls stays in reach. */
+.roasts { margin-bottom: 1.75rem; border-bottom: 2px solid var(--ink); }
+.roasts > summary {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding-bottom: .35rem;
+  border-bottom: 2px solid var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+.roasts > summary::-webkit-details-marker, .run > summary::-webkit-details-marker { display: none; }
+.roasts > summary::before, .run > summary::before { content: "\25B8"; color: var(--steel); }
+.roasts[open] > summary::before, .run[open] > summary::before { content: "\25BE"; }
+.roasts h2 { margin: 0; }
+.roast-count { color: var(--steel); }
+.roast-runs { max-height: 32rem; overflow-y: auto; }
+
+.run + .run { border-top: 1px solid var(--rule); }
+.run > summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .5rem 0;
+  cursor: pointer;
+  list-style: none;
+}
+.run-score { font: 700 1.6rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.run-score small { color: var(--steel); font: 400 .9rem var(--body); }
+.run-prompt { overflow: hidden; color: var(--steel); text-overflow: ellipsis; white-space: nowrap; }
+.run-time { color: var(--steel); font-variant-numeric: tabular-nums; }
+
+.verdict { padding: 0 0 1rem 1.15rem; }
+.verdict h3:first-child { margin-top: .25rem; }
+.verdict ul { margin: .25rem 0; padding-left: 1.15rem; }
+.verdict p { max-width: 62ch; margin: .25rem 0; overflow-wrap: anywhere; }
+
+dialog { padding: 1.5rem; border: 2px solid var(--ink); border-radius: 2px; color: var(--ink); width: min(22rem, 92vw); }
+dialog::backdrop { background: rgba(20, 48, 74, .45); }
+.dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 1rem; }
+.dialog-actions button[type="submit"] { width: auto; margin-top: 0; }
+
+@media (max-width: 800px) {
+  .room { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meter-fill { transition: none; }
+  tr.new .stamp:not(.ok) { animation: none; }
+}

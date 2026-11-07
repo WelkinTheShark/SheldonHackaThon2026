@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZeroDog: see and stop AI waste</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="brand">
+    <h1>ZeroDog</h1>
+    <p>See what your AI calls cost, and stop the waste before you pay for it.</p>
+  </div>
+  <button type="button" id="reset" class="quiet">Reset demo</button>
+</header>
+
+<section class="meter" aria-label="Spending">
+  <div class="meter-figures">
+    <p class="spent"><span id="spent">$0.0000</span> spent of <span id="budget">$1.0000</span> budget</p>
+    <button type="button" id="edit-budget" class="quiet">Edit budget</button>
+  </div>
+  <div class="meter-track" role="progressbar" aria-label="Budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="meter-bar">
+    <div class="meter-fill" id="meter-fill"></div>
+  </div>
+  <dl class="tally">
+    <div><dt>Saved</dt><dd id="saved">$0.0000</dd></div>
+    <div><dt>Calls</dt><dd id="count">0</dd></div>
+    <div><dt>Blocked</dt><dd id="blocked">0</dd></div>
+  </dl>
+</section>
+
+<main>
+  <div class="room">
+    <form id="call-form" class="composer">
+      <h2>Try a call</h2>
+      <label for="level">Routing level</label>
+      <input type="range" id="level" min="1" max="4" step="1" value="2">
+      <div id="level-ticks" class="level-ticks" aria-hidden="true"></div>
+      <p id="level-note" class="hint"></p>
+      <label for="developer">Developer</label>
+      <select id="developer"><option value="">Unattributed</option></select>
+      <label for="model">Model</label>
+      <select id="model"></select>
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" rows="5" maxlength="20000" placeholder="Ask Claude something, paste a prompt or tool definition to roast, or choose an example below"></textarea>
+      <div class="examples">
+        <span id="examples-label">Examples:</span>
+        <button type="button" class="chip" id="simple-task" aria-describedby="examples-label">Simple task</button>
+        <button type="button" class="chip" id="real-design" aria-describedby="examples-label">Real design</button>
+      </div>
+      <button type="button" id="roast-send" class="secondary">Roast this prompt</button>
+      <p class="hint">Scores it for wasted tokens without running it on the model above.</p>
+      <p id="recommend" class="recommend" role="status" hidden></p>
+      <button type="submit" id="send">Send call</button>
+      <button type="button" id="use-anyway" class="secondary" hidden></button>
+      <p id="form-status" class="form-status" role="status"></p>
+      <p id="reply" class="reply" hidden></p>
+
+      <label class="toggle">
+        <input type="checkbox" id="use-recommended">
+        <span>Use recommended model</span>
+      </label>
+      <p class="hint">Runs each call on its ideal model, which can cost more at Thorough and Full power. Use a model anyway to override it once.</p>
+
+      <button type="button" id="simulate" class="secondary">Simulate agent retry loop</button>
+      <p class="hint">Sends real Haiku calls that repeat one tool error until ZeroDog stops them.</p>
+    </form>
+
+    <section class="ledger" aria-labelledby="ledger-title">
+      <details id="roasts" class="roasts" hidden>
+        <summary><h2>Roast My Stack</h2><span id="roast-count" class="roast-count"></span></summary>
+        <div id="roast-runs" class="roast-runs"></div>
+      </details>
+
+      <h2 id="ledger-title">Live calls</h2>
+      <div class="ledger-scroll">
+        <table>
+          <thead>
+            <tr><th scope="col">Time</th><th scope="col">Developer</th><th scope="col">Prompt</th><th scope="col">Ideal model</th><th scope="col">Used model</th><th scope="col" class="num">Tokens</th><th scope="col" class="num">Cost</th><th scope="col">Status</th></tr>
+          </thead>
+          <tbody id="calls"></tbody>
+        </table>
+      </div>
+      <p id="empty" class="empty">No calls yet. Send one on the left.</p>
+      <aside id="why" class="why" hidden aria-live="polite">
+        <h3>Why this was flagged</h3>
+        <p id="why-reason"></p>
+        <p id="why-math"></p>
+      </aside>
+
+      <section id="board" class="board" aria-labelledby="board-title" hidden>
+        <h2 id="board-title">Developer leaderboard</h2>
+        <div class="ledger-scroll">
+          <table>
+            <thead>
+              <tr><th scope="col">Rank</th><th scope="col">Developer</th><th scope="col" class="num">Prompts</th><th scope="col" class="num">Tokens</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Dev time</th><th scope="col" class="num">Overuse</th><th scope="col" class="num">Overspend</th></tr>
+            </thead>
+            <tbody id="board-rows"></tbody>
+          </table>
+        </div>
+        <p id="board-note" class="hint"></p>
+      </section>
+    </section>
+  </div>
+</main>
+
+<dialog id="budget-dialog">
+  <form id="budget-form" method="dialog">
+    <h2>Edit budget</h2>
+    <label for="budget-input">Budget in dollars</label>
+    <input id="budget-input" type="number" min="0" step="0.0001" required>
+    <p id="budget-error" class="form-status" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" id="budget-cancel" class="quiet">Cancel</button>
+      <button type="submit" id="budget-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
