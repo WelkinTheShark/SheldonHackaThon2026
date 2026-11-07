@@ -2,16 +2,19 @@ import gzip
 import hmac
 import json
 import math
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import config, pipeline, roast, store, team, upstream
+from . import access, config, devs, pipeline, roast, store, team, upstream
+from .access import Viewer
 
 STATIC = Path(__file__).parent / "static"
 FORWARDED_RESPONSE_HEADERS = {"request-id", "retry-after", "x-should-retry"}
@@ -41,6 +44,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="CaveDawg", lifespan=lifespan)
+
+
+@app.exception_handler(HTTPException)
+async def _http_error(_: Request, error: HTTPException) -> JSONResponse:
+    """Page API errors use the same {"error": ...} shape as every other page reply."""
+    return JSONResponse({"error": error.detail}, status_code=error.status_code)
 
 
 def _api_error(message: str, status: int = 400) -> JSONResponse:
@@ -215,7 +224,7 @@ class PlaygroundCall(BaseModel):
 
 
 @app.post("/api/playground")
-async def playground(call: PlaygroundCall):
+async def playground(call: PlaygroundCall, viewer: Viewer = Depends(access.require_viewer)):
     prompt = call.prompt.strip()
     if not prompt:
         return _api_error("Enter a prompt before sending.")
@@ -223,7 +232,10 @@ async def playground(call: PlaygroundCall):
         return _api_error(f"Shorten the prompt to {config.PROMPT_MAX_CHARS:,} characters or fewer.")
     if call.model not in config.PLAYGROUND_MODELS:
         return _api_error("Choose one of the listed models.")
-    if call.developer_id is not None and not store.get_developer(call.developer_id):
+    # Only all-access users may send on someone else's behalf. Everyone else sends as themselves.
+    chose = "developer_id" in call.model_fields_set
+    developer_id = call.developer_id if viewer.can_manage and chose else viewer.id
+    if developer_id is not None and not store.get_developer(developer_id):
         return _api_error("Choose one of the listed developers.")
     body = {
         "model": call.model,
@@ -236,7 +248,7 @@ async def playground(call: PlaygroundCall):
         body,
         pipeline.Context(
             "playground",
-            developer_id=call.developer_id,
+            developer_id=developer_id,
             may_swap=True,
             keep_model=call.keep_model,
         ),
@@ -271,7 +283,7 @@ def _loop_messages(failures: int) -> list[dict]:
 
 
 @app.post("/api/simulate-loop")
-async def simulate_loop():
+async def simulate_loop(_: Viewer = Depends(access.require_manager)):
     """Replays a stuck agent with real Haiku calls until the proxy stops it."""
     statuses = []
     for failures in range(LOOP_ATTEMPTS):
@@ -295,16 +307,53 @@ class RoastRequest(BaseModel):
     text: str
 
 
-@app.post("/api/roast")
-async def roast_stack(body: RoastRequest, request: Request):
-    text = body.text.strip()
+async def _roast_text(text: str, viewer: Viewer):
+    text = text.strip()
     if not text:
         return _api_error("Paste a prompt or tool definition to roast.")
     if len(text) > config.ROAST_MAX_CHARS:
         return _api_error(f"Shorten this to {config.ROAST_MAX_CHARS:,} characters or fewer.")
-    # A token is optional here. It only attributes roasts sent from Claude Code.
-    _, developer = _identify(request)
-    return await roast.run(text, developer["id"] if developer else None)
+    return _roast_view(await roast.run(text, viewer.id))
+
+
+@app.post("/api/roast")
+async def roast_stack(body: RoastRequest, viewer: Viewer = Depends(access.require_viewer)):
+    return await _roast_text(body.text, viewer)
+
+
+@app.post("/api/calls/{call_id}/roast")
+async def roast_call(call_id: int, viewer: Viewer = Depends(access.require_viewer)):
+    """Roast the words of a call that already ran. The result is shared with everyone who sees it."""
+    call = store.get_call(call_id)
+    if not call or not access.can_see(viewer, call["developer_id"]):
+        return _api_error("That call isn't in your Live calls.", 404)
+    if not call["prompt_text"]:
+        return _api_error("This call has no saved prompt to roast.")
+    return await _roast_text(call["prompt_text"], viewer)
+
+
+def _roast_view(result: dict) -> dict:
+    names = _names()
+    return {**result, "developer": names.get(result["developer_id"], access.ADMIN_NAME)}
+
+
+def _names() -> dict:
+    return {developer["id"]: developer["name"] for developer in store.list_developers()}
+
+
+@app.get("/api/roasts")
+async def roasts(viewer: Viewer = Depends(access.require_viewer)):
+    """Roasts by people this viewer can see, plus roasts of calls this viewer can see."""
+    scope = access.scope(viewer)
+    visible_hashes = {
+        call["prompt_hash"] for call in store.list_calls(-1)
+        if call["prompt_hash"] and (scope is None or call["developer_id"] in scope)
+    }
+    shown = [
+        row for row in store.list_roasts()
+        if scope is None or row["developer_id"] in scope or row["prompt_hash"] in visible_hashes
+    ]
+    return [_roast_view(roast.view(row)) for row in shown[: config.HISTORY_LIMIT]]
 
 
 class SettingsUpdate(BaseModel):
@@ -315,7 +364,7 @@ class SettingsUpdate(BaseModel):
 
 
 @app.put("/api/settings")
-async def update_settings(update: SettingsUpdate):
+async def update_settings(update: SettingsUpdate, _: Viewer = Depends(access.require_manager)):
     budget = update.budget_usd
     if budget is not None and (not math.isfinite(budget) or budget < 0):
         return _api_error("Enter a budget of $0 or more.")
@@ -345,41 +394,38 @@ def _latest_flag(calls: list[dict]) -> dict | None:
     return None
 
 
+def _visible_calls(viewer: Viewer) -> list[dict]:
+    scope = access.scope(viewer)
+    return [c for c in store.list_calls() if scope is None or c["developer_id"] in scope]
+
+
 @app.get("/api/calls")
-async def calls():
-    return [_with_labels(call) for call in store.list_calls()]
+async def calls(viewer: Viewer = Depends(access.require_viewer)):
+    return [_with_labels(call) for call in _visible_calls(viewer)]
 
 
 @app.get("/api/history")
-async def history():
-    return team.history()
-
-
-@app.get("/api/live-roasts")
-async def live_roasts():
-    """Rules-only roasts of each Claude Code prompt, newest first."""
-    names = {developer["id"]: developer["name"] for developer in store.list_developers()}
-    return [
-        {
-            **roast_row,
-            "developer": names.get(roast_row["developer_id"], team.UNATTRIBUTED),
-            "ideal_label": team.label(roast_row["ideal_model"]),
-        }
-        for roast_row in store.list_live_roasts()
-    ]
+async def history(viewer: Viewer = Depends(access.require_viewer)):
+    return team.history(scope=access.scope(viewer))
 
 
 @app.get("/api/leaderboard")
-async def leaderboard():
-    return {"minimum_prompts": config.MIN_RATED_PROMPTS, "rows": team.leaderboard()}
+async def leaderboard(viewer: Viewer = Depends(access.require_viewer)):
+    return {
+        "minimum_prompts": config.MIN_RATED_PROMPTS,
+        "rows": team.leaderboard(scope=access.scope(viewer)),
+    }
 
 
 @app.get("/api/summary")
-async def summary():
+async def summary(viewer: Viewer = Depends(access.require_viewer)):
+    scope = access.scope(viewer)
     return {
+        # Spend and budget are shared by the whole demo, so everyone sees the same meter.
         **store.totals(),
         **store.get_settings(),
-        "latest_flag": _latest_flag(store.list_calls()),
+        "viewer": viewer.public(),
+        "latest_flag": _latest_flag(_visible_calls(viewer)),
         "models": [
             {"id": model, "label": config.MODEL_LABELS[model]}
             for model in config.PLAYGROUND_MODELS
@@ -391,14 +437,185 @@ async def summary():
         "developers": [
             {"id": developer["id"], "name": developer["name"]}
             for developer in store.list_developers()
+            if scope is None or developer["id"] in scope
         ],
     }
 
 
+@app.get("/api/me")
+async def me(viewer: Viewer = Depends(access.require_viewer)):
+    return viewer.public()
+
+
 @app.post("/api/reset")
-async def reset():
+async def reset(_: Viewer = Depends(access.require_manager)):
     store.reset()
     return {"ok": True}
+
+
+# ---- User management. All access only.
+
+class NewUser(BaseModel):
+    name: str
+    team: str = ""
+    access: str = "self"
+    password: str = ""
+
+
+class UserUpdate(BaseModel):
+    name: str | None = None
+    team: str | None = None
+    access: str | None = None
+    swaps_allowed: bool | None = None
+    password: str | None = None
+
+
+class Login(BaseModel):
+    name: str
+    password: str
+
+
+class Signup(BaseModel):
+    name: str
+    password: str
+
+
+def _user(developer: dict) -> dict:
+    return {
+        **{
+            key: developer[key]
+            for key in ("id", "name", "team", "access", "swaps_allowed", "created")
+        },
+        "has_password": bool(developer["password_hash"]),
+    }
+
+
+def _password_problem(password: str) -> str | None:
+    if len(password) < config.PASSWORD_MIN_CHARS:
+        return f"Use a password of at least {config.PASSWORD_MIN_CHARS} characters."
+    return None
+
+
+def _issued(developer: dict, token: str) -> dict:
+    return {
+        "user": _user(developer),
+        "token": token,
+        "claude_code_settings": devs.claude_code_settings(token),
+    }
+
+
+def _check_user_fields(name: str | None, level: str | None) -> str | None:
+    if name is not None and not name.strip():
+        return "Enter a username."
+    if level is not None and level not in access.LEVELS:
+        return "Choose self, team or all access."
+    return None
+
+
+@app.get("/api/users")
+async def users(_: Viewer = Depends(access.require_manager)):
+    return [_user(developer) for developer in store.list_developers()]
+
+
+@app.post("/api/users")
+async def create_user(new: NewUser, _: Viewer = Depends(access.require_manager)):
+    problem = _check_user_fields(new.name, new.access) or (
+        _password_problem(new.password) if new.password else None
+    )
+    if problem:
+        return _api_error(problem)
+    try:
+        developer, token = store.add_developer(new.name.strip(), new.team.strip(), new.access)
+    except sqlite3.IntegrityError:
+        return _api_error(f"{new.name.strip()} already exists.")
+    if new.password:
+        store.set_password(developer["id"], new.password)
+        developer = store.get_developer(developer["id"])
+    return _issued(developer, token)
+
+
+# ---- Page login. Passwords open a page session; tokens still work for Claude Code and the page.
+
+@app.get("/api/signin-options")
+async def signin_options():
+    level = config.settings.demo_access
+    return {"demo": level in access.LEVELS, "demo_access": level if level in access.LEVELS else None}
+
+
+@app.post("/api/login")
+async def login(body: Login):
+    developer = store.check_login(body.name.strip(), body.password)
+    if not developer:
+        return _api_error("Wrong username or password.", 401)
+    return {"session": store.create_session(developer["id"]), "viewer": _viewer_of(developer)}
+
+
+@app.post("/api/signup")
+async def signup(body: Signup):
+    """The sign-in page's Demo button: a new login with its own Claude Code token."""
+    level = config.settings.demo_access
+    if level not in access.LEVELS:
+        return _api_error("Demo logins are turned off. Ask your admin for an account.", 403)
+    name = body.name.strip()
+    problem = _check_user_fields(name, level) or _password_problem(body.password)
+    if problem:
+        return _api_error(problem)
+    try:
+        developer, token = store.add_developer(name, config.DEMO_TEAM, level)
+    except sqlite3.IntegrityError:
+        return _api_error(f"{name} is taken. Choose another username.")
+    store.set_password(developer["id"], body.password)
+    developer = store.get_developer(developer["id"])
+    return {
+        **_issued(developer, token),
+        "session": store.create_session(developer["id"]),
+        "viewer": _viewer_of(developer),
+    }
+
+
+@app.post("/api/logout")
+async def logout(request: Request, _: Viewer = Depends(access.require_viewer)):
+    store.end_session(access.page_token(request))
+    return {"ok": True}
+
+
+def _viewer_of(developer: dict) -> dict:
+    return Viewer(developer["id"], developer["name"], developer["team"], developer["access"]).public()
+
+
+@app.patch("/api/users/{user_id}")
+async def update_user(
+    user_id: int, update: UserUpdate, _: Viewer = Depends(access.require_manager)
+):
+    problem = _check_user_fields(update.name, update.access) or (
+        _password_problem(update.password) if update.password is not None else None
+    )
+    if problem:
+        return _api_error(problem)
+    fields = update.model_dump(exclude_none=True)
+    password = fields.pop("password", None)
+    if password is not None and not store.set_password(user_id, password):
+        return _api_error("No such user.", 404)
+    for key in ("name", "team"):
+        if key in fields:
+            fields[key] = fields[key].strip()
+    if "swaps_allowed" in fields:
+        fields["swaps_allowed"] = int(fields["swaps_allowed"])
+    try:
+        developer = store.update_developer(user_id, **fields)
+    except sqlite3.IntegrityError:
+        return _api_error(f"{fields.get('name')} already exists.")
+    if not developer:
+        return _api_error("No such user.", 404)
+    return _user(developer)
+
+
+@app.post("/api/users/{user_id}/token")
+async def new_token(user_id: int, _: Viewer = Depends(access.require_manager)):
+    token = store.rotate_token(user_id)
+    if not token:
+        return _api_error("No such user.", 404)
+    return _issued(store.get_developer(user_id), token)
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

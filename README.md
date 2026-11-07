@@ -16,7 +16,23 @@ $env:CAVEDAWG_GATEWAY_TOKEN = "<a long random string>"
 python -m uvicorn app.main:app --port 8000
 ```
 
-Open http://127.0.0.1:8000.
+Open http://127.0.0.1:8000. People sign in with a username and password. Demo, create new token on
+the sign-in page makes a new login on team Demo, with Self access unless `CAVEDAWG_DEMO_ACCESS` says
+`team`, `all` or `off`. It also shows that login's Claude Code token once. To get in as Admin, use
+Sign in with a token instead and paste `CAVEDAWG_GATEWAY_TOKEN`. Then manage people in the Users
+section, or with `python -m app.devs add "Name" --team Core --access team` and
+`python -m app.devs password "Name"`.
+
+| Access | Sees | Can manage users, settings and Reset demo |
+|---|---|---|
+| Self | Their own calls and roasts | No |
+| Team | Calls and roasts of everyone on the same team | No |
+| All | Everything | Yes |
+
+Each user has a username, a team, an optional password and a token. The password signs in to the
+page only. The token works for Claude Code and the page. New token in the Users section, or
+`python -m app.devs token "Name"`, replaces it, and the old one stops working at once. Setting a
+password signs that person out of open pages.
 
 For Wren, run `.\serve.ps1` instead. It reads `.env` (copy `.env.example`), starts the app and opens a
 Cloudflare quick tunnel, then prints the public URL to paste into Wren. `.\serve.ps1 -Stub` runs
@@ -80,7 +96,7 @@ bills to CaveDawg's API key.
 | Override | Add `#keep` to a prompt, or run `python -m app.devs swaps "Name" off`. |
 | Rejected swap | If Anthropic refuses the swapped model, the original request is resent once and marked Swap failed. |
 | Dev time | Claude Code telemetry, shown as Measured. Without it, an Estimate from gaps between calls. |
-| Live roast | Each prompt is scored by the Roast rules as it arrives and shows in Roast My Stack, with no extra Claude call. |
+| Live roast | Each prompt is scored by the Roast rules as it arrives and shows in Roast results and on its Live calls row, with no extra Claude call. |
 | Roast | Copy `claude-code/roast.md` to `~/.claude/commands/` and `claude-code/cavedawg_roast.py` to `~/.claude/`, then run `/roast <prompt>`. |
 
 Anthropic doesn't document swapping models behind Claude Code as safe, so test it with real calls
@@ -118,19 +134,25 @@ Any Docker host works. Set these environment variables:
 | `CAVEDAWG_HARD_CAP_USD` | Lifetime spend ceiling, default 5. Reset demo doesn't clear it. |
 | `TYPESAFE_API_KEY` | Optional. Turns on Jev. |
 | `CAVEDAWG_PUBLIC_URL` | The URL `app.devs add` puts in Claude Code settings. |
+| `CAVEDAWG_DEMO_ACCESS` | Access for Demo logins: `self` (default), `team`, `all` or `off`. |
 | `CAVEDAWG_DB` | Database path, default `data/cavedawg.db`. Keep it on a persistent disk. |
 
 ## Known limits
 
-- The page has no login, so anyone with the URL can spend up to the hard cap, read prompt snippets
-  and the leaderboard, change settings, and clear history with Reset demo. Treat a public deployment
-  as a demo with no real team data, and rely on the Console spend limit as the backstop.
-- The first 80 characters of each prompt are stored, along with call metadata. Full prompts and
-  replies aren't.
+- Passwords are hashed with scrypt, and a page session lasts until sign-out or a password change.
+  There is no rate limit on login attempts, no password reset by email and no audit log. Anyone
+  with an all-access login, or the gateway token, can change settings and users. The Demo button
+  lets anyone with the URL make a login and spend from the shared budget, so set
+  `CAVEDAWG_DEMO_ACCESS=off` on a deployment that needs it closed. Rely on the Console spend limit
+  as the backstop.
+- The person's own prompt words are stored, up to 20,000 characters, so calls can be roasted later.
+  System prompts, tool results and replies aren't. Roasts are shared with everyone who can see the
+  call they match.
+- Spend, budget and settings are shared by the whole demo, so every user sees the same meter.
 - The default $5 hard cap and $1 budget are for demos. Real Claude Code sessions will reach them fast.
 - Leaderboard ratings are judgments from Jev or keywords. Don't use them as a performance measure.
 - A budget blocks the call after spend reaches the cap, so the last call can go slightly over.
 - Saved amounts are estimates. A move down prices the same token counts on the original model,
   and a stopped loop prices the blocked call's estimated input.
 - The keyword rules can miss cases or misjudge a short, hard task that mentions a keyword.
-- Full Roast results live in the browser's local storage, up to 20 runs per browser.
+- A roast matches a call only when the words were sent unchanged, so any edit starts fresh.

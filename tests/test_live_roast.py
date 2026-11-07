@@ -4,7 +4,7 @@ from .test_claude_code import call, first_body, hints, tool_round
 
 
 def live(client):
-    return client.get("/api/live-roasts").json()
+    return [row for row in client.get("/api/roasts").json() if row["source"] == "live"]
 
 
 def test_main_prompt_is_roasted_once(client, anthropic, developer):
@@ -17,33 +17,40 @@ def test_main_prompt_is_roasted_once(client, anthropic, developer):
     assert len(rows) == 1
     row = rows[0]
     assert row["developer"] == "Ada"
-    assert row["snippet"] == "Please write a commit message for: fix typo in README"
+    assert row["prompt"] == "Please write a commit message for: fix typo in README"
     assert 0 <= row["score"] < 100
     assert "Politeness or role filler adds tokens without detail." in row["issues"]
-    assert row["ideal_label"] == config.MODEL_LABELS[config.HAIKU]
-    assert row["decided_by"] == "Rules"
+    assert row["recommendation"]["label"] == config.MODEL_LABELS[config.HAIKU]
+    assert row["recommendation"]["decided_by"] == "Rules"
+    assert row["fix"] == "" and row["receipt"] is None
     assert len(anthropic.requests) == 2  # the roast itself made no extra call
+
+
+def test_live_roast_shows_on_its_history_row(client, developer):
+    auth, _ = developer
+    call(client, first_body("Commit and push"), auth, **hints())
+    row = client.get("/api/history").json()[0]
+    assert row["roast"]["id"] == live(client)[0]["id"]
 
 
 def test_each_new_prompt_gets_its_own_roast(client, developer):
     auth, _ = developer
     call(client, first_body("Commit and push"), auth, **hints("p1"))
     call(client, first_body("Design the cache layer"), auth, **hints("p2"))
-    assert [row["prompt_id"] for row in live(client)] == ["p2", "p1"]
+    assert [row["prompt"] for row in live(client)] == ["Design the cache layer", "Commit and push"]
 
 
-def test_background_and_playground_calls_are_not_roasted(client, developer):
+def test_background_and_playground_calls_are_not_auto_roasted(client, developer):
     auth, _ = developer
     for request_class in ("subagent", "compaction", "auxiliary"):
         call(client, first_body("Commit and push"), auth, **hints(request_class, request_class))
     client.post("/api/playground", json={"model": config.OPUS, "prompt": "Commit and push"})
-    client.post("/api/roast", json={"text": "Commit and push"})
     assert live(client) == []
 
 
 def test_snippet_is_short_and_reset_clears(client, developer):
     auth, _ = developer
     call(client, first_body("x " * 200), auth, **hints())
-    assert len(live(client)[0]["snippet"]) <= config.SNIPPET_CHARS + 1
+    assert len(live(client)[0]["prompt"]) <= config.SNIPPET_CHARS
     client.post("/api/reset")
-    assert live(client) == []
+    assert client.get("/api/roasts").json() == []

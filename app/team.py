@@ -53,17 +53,29 @@ def _worst_status(calls: list[dict]) -> dict:
     )
 
 
-def history(limit: int = config.HISTORY_LIMIT) -> list[dict]:
+def _visible(call: dict, scope: set | None) -> bool:
+    return scope is None or call["developer_id"] in scope
+
+
+def history(limit: int = config.HISTORY_LIMIT, scope: set | None = None) -> list[dict]:
     """One row per prompt, newest first. A Claude Code prompt can span many calls."""
     names = _names()
     groups: dict[str, list[dict]] = {}
     for call in reversed(store.list_calls(limit * 20)):
-        groups.setdefault(_prompt_key(call), []).append(call)
+        if _visible(call, scope):
+            groups.setdefault(_prompt_key(call), []).append(call)
+    # The newest roast of the same words belongs to the row, whoever roasted it.
+    latest_roast: dict[str, dict] = {}
+    for roast_row in store.list_roasts():
+        if roast_row["prompt_hash"]:
+            latest_roast.setdefault(roast_row["prompt_hash"], roast_row)
 
     rows = []
     for calls in groups.values():
         first, shown = calls[0], _worst_status(calls)
         ideal = next((c["ideal_model"] for c in calls if c["ideal_model"]), "")
+        worded = next((c for c in calls if c["prompt_text"]), None)
+        roast = latest_roast.get(worded["prompt_hash"]) if worded else None
         rows.append({
             "id": calls[-1]["id"],
             "ts": first["ts"],
@@ -80,6 +92,8 @@ def history(limit: int = config.HISTORY_LIMIT) -> list[dict]:
             "status": shown["status"],
             "reason": shown["reason"],
             "simulated": any(c["simulated"] for c in calls),
+            "roast_call_id": worded["id"] if worded else None,
+            "roast": {"id": roast["id"], "score": roast["score"]} if roast else None,
         })
     rows.sort(key=lambda row: row["id"], reverse=True)
     return rows[:limit]
@@ -92,12 +106,15 @@ def active_seconds(timestamps: list[str]) -> float:
     return sum(gap for gap in gaps if gap <= config.IDLE_GAP_SECONDS)
 
 
-def leaderboard() -> list[dict]:
+def leaderboard(scope: set | None = None) -> list[dict]:
     names = _names()
     measured = store.measured_dev_time()
-    by_developer: dict[int | None, list[dict]] = {developer: [] for developer in names}
+    by_developer: dict[int | None, list[dict]] = {
+        developer: [] for developer in names if scope is None or developer in scope
+    }
     for call in store.list_calls(-1):
-        by_developer.setdefault(call["developer_id"], []).append(call)
+        if _visible(call, scope):
+            by_developer.setdefault(call["developer_id"], []).append(call)
 
     rows = []
     for developer, calls in by_developer.items():

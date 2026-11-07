@@ -77,10 +77,13 @@ async def run(text: str, developer_id: int | None = None) -> dict:
     )
 
     fix, receipt_model, cost, note = FALLBACK_FIX, "Rules only", 0.0, why
+    simulated = bool(outcome.row.get("simulated"))
     if outcome.status == "Roast":
         fix = pipeline.reply_text(outcome.data) or FALLBACK_FIX
         receipt_model = config.MODEL_LABELS[model]
         cost = outcome.row["cost_usd"]
+        if simulated:
+            note = f"{note} Simulated, so no tokens were spent."
     else:
         note = f"Standard fix shown. {outcome.message}"
     # Tool definitions are full of words like "error", so only plain prompts are read for meaning.
@@ -88,15 +91,48 @@ async def run(text: str, developer_id: int | None = None) -> dict:
     verdict = await pipeline.judge(
         tokens, has_tools, "" if has_tools else text, store.get_settings()["level"]
     )
-    return {
-        "score": points,
-        "issues": issues,
-        "fix": fix,
+    saved = store.add_roast(
+        source="manual",
+        developer_id=developer_id,
+        prompt_hash=rules.prompt_hash(text),
+        snippet=rules.snippet(text),
+        score=points,
+        issues=issues,
+        fix=fix,
+        ideal_model=verdict.ideal,
+        decided_by=verdict.decided_by,
+        note=verdict.note,
+        receipt_model=receipt_model,
+        cost_usd=cost,
+        receipt_note=note,
+        simulated=int(simulated),
+    )
+    return view(saved)
+
+
+def view(row: dict) -> dict:
+    """A stored roast in the shape the page and the Claude Code script read."""
+    result = {
+        "id": row["id"],
+        "ts": row["ts"],
+        "source": row["source"],
+        "developer_id": row["developer_id"],
+        "prompt": row["snippet"],
+        "prompt_hash": row["prompt_hash"],
+        "score": row["score"],
+        "issues": row["issues"],
+        "fix": row["fix"],
+        "simulated": bool(row["simulated"]),
         "recommendation": {
-            "model": verdict.ideal,
-            "label": config.MODEL_LABELS[verdict.ideal],
-            "reason": verdict.note,
-            "decided_by": verdict.decided_by,
+            "model": row["ideal_model"],
+            "label": config.MODEL_LABELS.get(row["ideal_model"], row["ideal_model"]),
+            "reason": row["note"],
+            "decided_by": row["decided_by"],
         },
-        "receipt": {"model": receipt_model, "cost_usd": cost, "note": note},
+        "receipt": None,
     }
+    if row["source"] == "manual":
+        result["receipt"] = {
+            "model": row["receipt_model"], "cost_usd": row["cost_usd"], "note": row["receipt_note"],
+        }
+    return result

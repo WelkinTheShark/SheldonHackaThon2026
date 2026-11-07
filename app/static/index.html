@@ -15,7 +15,11 @@
     <h1>CaveDawg</h1>
     <p>See what your AI calls cost, and stop the waste before you pay for it.</p>
   </div>
-  <button type="button" id="reset" class="quiet">Reset demo</button>
+  <div class="session">
+    <p id="who" class="who"></p>
+    <button type="button" id="sign-out" class="quiet" hidden>Sign out</button>
+    <button type="button" id="reset" class="quiet manage-only">Reset demo</button>
+  </div>
 </header>
 
 <p id="simulated-banner" class="simulated-banner" role="status" hidden>Simulated responses are on. Nothing is sent to Anthropic, and amounts shown are estimates, not real spend.</p>
@@ -23,7 +27,7 @@
 <section class="meter" aria-label="Spending">
   <div class="meter-figures">
     <p class="spent"><span id="spent">$0.0000</span> spent of <span id="budget">$1.0000</span> budget</p>
-    <button type="button" id="edit-budget" class="quiet">Edit budget</button>
+    <button type="button" id="edit-budget" class="quiet manage-only">Edit budget</button>
   </div>
   <div class="meter-track" role="progressbar" aria-label="Budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="meter-bar">
     <div class="meter-fill" id="meter-fill"></div>
@@ -39,17 +43,19 @@
   <div class="room">
     <form id="call-form" class="composer">
       <h2>Try a call</h2>
-      <label class="toggle simulated-toggle">
-        <input type="checkbox" id="simulated">
-        <span>Simulated responses</span>
-      </label>
-      <p class="hint">On: canned replies and no token cost. Off: real Claude calls that spend tokens.</p>
-      <label for="level">Routing level</label>
-      <input type="range" id="level" min="1" max="4" step="1" value="2">
-      <div id="level-ticks" class="level-ticks" aria-hidden="true"></div>
-      <p id="level-note" class="hint"></p>
-      <label for="developer">Developer</label>
-      <select id="developer"><option value="">Unattributed</option></select>
+      <div class="manage-only">
+        <label class="toggle simulated-toggle">
+          <input type="checkbox" id="simulated">
+          <span>Simulated responses</span>
+        </label>
+        <p class="hint">On: canned replies and no token cost. Off: real Claude calls that spend tokens.</p>
+        <label for="level">Routing level</label>
+        <input type="range" id="level" min="1" max="4" step="1" value="2">
+        <div id="level-ticks" class="level-ticks" aria-hidden="true"></div>
+        <p id="level-note" class="hint"></p>
+        <label for="developer">Developer</label>
+        <select id="developer"></select>
+      </div>
       <label for="model">Model</label>
       <select id="model"></select>
       <label for="prompt">Prompt</label>
@@ -60,44 +66,51 @@
         <button type="button" class="chip" id="real-design" aria-describedby="examples-label">Real design</button>
       </div>
       <button type="button" id="roast-send" class="secondary">Roast this prompt</button>
-      <p class="hint">Scores it for wasted tokens without running it on the model above.</p>
+      <p class="hint">Scores it for wasted tokens without running it on the model above. Send it unchanged and the roast stays with the call for everyone who can see it.</p>
       <p id="recommend" class="recommend" role="status" hidden></p>
       <button type="submit" id="send">Send call</button>
       <button type="button" id="use-anyway" class="secondary" hidden></button>
       <p id="form-status" class="form-status" role="status"></p>
       <p id="reply" class="reply" hidden></p>
 
-      <label class="toggle">
-        <input type="checkbox" id="use-recommended">
-        <span>Use recommended model</span>
-      </label>
-      <p class="hint">Runs each call on its ideal model, which can cost more at Thorough and Full power. Use a model anyway to override it once.</p>
+      <div class="manage-only">
+        <label class="toggle">
+          <input type="checkbox" id="use-recommended">
+          <span>Use recommended model</span>
+        </label>
+        <p class="hint">Runs each call on its ideal model, which can cost more at Thorough and Full power. Use a model anyway to override it once.</p>
 
-      <button type="button" id="simulate" class="secondary">Simulate agent retry loop</button>
-      <p class="hint">Sends real Haiku calls that repeat one tool error until CaveDawg stops them.</p>
+        <button type="button" id="simulate" class="secondary">Simulate agent retry loop</button>
+        <p class="hint">Sends real Haiku calls that repeat one tool error until CaveDawg stops them.</p>
+      </div>
     </form>
 
     <section class="ledger" aria-labelledby="ledger-title">
-      <details id="roasts" class="roasts" hidden>
-        <summary><h2>Roast My Stack</h2><span id="roast-count" class="roast-count"></span></summary>
-        <div id="roast-runs" class="roast-runs"></div>
-      </details>
+      <div class="ledger-grid">
+        <div class="ledger-calls">
+          <h2 id="ledger-title">Live calls</h2>
+          <div class="ledger-scroll">
+            <table>
+              <thead>
+                <tr><th scope="col">Time</th><th scope="col">Developer</th><th scope="col">Prompt</th><th scope="col">Ideal model</th><th scope="col">Used model</th><th scope="col" class="num">Tokens</th><th scope="col" class="num">Cost</th><th scope="col">Status</th><th scope="col">Roast</th></tr>
+              </thead>
+              <tbody id="calls"></tbody>
+            </table>
+          </div>
+          <p id="empty" class="empty">No calls yet. Send one on the left.</p>
+          <aside id="why" class="why" hidden aria-live="polite">
+            <h3>Why this was flagged</h3>
+            <p id="why-reason"></p>
+            <p id="why-math"></p>
+          </aside>
+        </div>
 
-      <h2 id="ledger-title">Live calls</h2>
-      <div class="ledger-scroll">
-        <table>
-          <thead>
-            <tr><th scope="col">Time</th><th scope="col">Developer</th><th scope="col">Prompt</th><th scope="col">Ideal model</th><th scope="col">Used model</th><th scope="col" class="num">Tokens</th><th scope="col" class="num">Cost</th><th scope="col">Status</th></tr>
-          </thead>
-          <tbody id="calls"></tbody>
-        </table>
+        <section id="roasts" class="roasts" aria-labelledby="roasts-title">
+          <h2 id="roasts-title">Roast results <span id="roast-count" class="roast-count"></span></h2>
+          <p id="roasts-empty" class="empty">No roasts yet. Click Roast on a call, or Roast this prompt.</p>
+          <div id="roast-runs" class="roast-runs"></div>
+        </section>
       </div>
-      <p id="empty" class="empty">No calls yet. Send one on the left.</p>
-      <aside id="why" class="why" hidden aria-live="polite">
-        <h3>Why this was flagged</h3>
-        <p id="why-reason"></p>
-        <p id="why-math"></p>
-      </aside>
 
       <section id="board" class="board" aria-labelledby="board-title" hidden>
         <h2 id="board-title">Developer leaderboard</h2>
@@ -110,6 +123,40 @@
           </table>
         </div>
         <p id="board-note" class="hint"></p>
+      </section>
+
+      <section id="users" class="users manage-only" aria-labelledby="users-title">
+        <h2 id="users-title">Users</h2>
+        <p class="hint">Self sees only their own calls. Team sees everyone on the same team. All sees everything and can manage users and settings. Changes save as you make them.</p>
+        <div class="ledger-scroll">
+          <table>
+            <thead>
+              <tr><th scope="col">Username</th><th scope="col">Team</th><th scope="col">Access</th><th scope="col">Model swaps</th><th scope="col">Password</th><th scope="col">Token</th></tr>
+            </thead>
+            <tbody id="user-rows"></tbody>
+          </table>
+        </div>
+        <form id="user-form" class="user-form">
+          <h3>Add a user</h3>
+          <div class="user-fields">
+            <div><label for="new-name">Username</label><input id="new-name" type="text" required autocomplete="off"></div>
+            <div><label for="new-team">Team</label><input id="new-team" type="text" autocomplete="off"></div>
+            <div><label for="new-access">Access</label>
+              <select id="new-access"><option value="self">Self</option><option value="team">Team</option><option value="all">All</option></select></div>
+            <div><label for="new-password">Password</label><input id="new-password" type="password" minlength="8" autocomplete="new-password" placeholder="Optional"></div>
+          </div>
+          <button type="submit" id="add-user">Create user and token</button>
+          <p id="users-status" class="form-status" role="status"></p>
+        </form>
+        <div id="token-box" class="token-box" hidden>
+          <h3 id="token-title"></h3>
+          <p class="hint">Shown only once. It signs in to this page, and the settings below route Claude Code through CaveDawg.</p>
+          <label for="token-value">Token</label>
+          <input id="token-value" type="text" readonly>
+          <label for="token-settings">Claude Code settings</label>
+          <textarea id="token-settings" rows="8" readonly></textarea>
+          <button type="button" id="token-copy" class="secondary">Copy token</button>
+        </div>
       </section>
     </section>
   </div>
@@ -124,6 +171,55 @@
     <div class="dialog-actions">
       <button type="button" id="budget-cancel" class="quiet">Cancel</button>
       <button type="submit" id="budget-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="signin-dialog" class="signin">
+  <form id="signin-form" method="dialog">
+    <h2 id="signin-title">Sign in to CaveDawg</h2>
+    <p id="signin-hint" class="hint">CaveDawg shows what your team's AI calls cost and stops the waste.</p>
+    <label for="signin-name">Username</label>
+    <input id="signin-name" type="text" required autocomplete="username">
+    <label for="signin-password">Password</label>
+    <input id="signin-password" type="password" required autocomplete="current-password">
+    <p id="signin-error" class="form-status" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" id="demo-toggle" class="quiet" hidden>Demo, create new token</button>
+      <button type="submit" id="signin-submit">Sign in</button>
+    </div>
+    <details id="token-signin" class="token-signin">
+      <summary>Sign in with a token instead</summary>
+      <label for="signin-token">Token</label>
+      <input id="signin-token" type="password" autocomplete="off">
+      <button type="button" id="token-submit" class="secondary">Sign in with token</button>
+    </details>
+  </form>
+</dialog>
+
+<dialog id="welcome-dialog" class="signin">
+  <h2 id="welcome-title">Your demo login is ready</h2>
+  <p class="hint">Sign in next time with your username and password. This token is for Claude Code and is shown only once.</p>
+  <label for="welcome-token">Token</label>
+  <input id="welcome-token" type="text" readonly>
+  <label for="welcome-settings">Claude Code settings for ~/.claude/settings.json</label>
+  <textarea id="welcome-settings" rows="8" readonly></textarea>
+  <div class="dialog-actions">
+    <button type="button" id="welcome-copy" class="quiet">Copy token</button>
+    <button type="button" id="welcome-continue" class="primary">Continue</button>
+  </div>
+</dialog>
+
+<dialog id="password-dialog">
+  <form id="password-form" method="dialog">
+    <h2 id="password-title">Set password</h2>
+    <p class="hint">Signs the user out of open pages. Their token keeps working.</p>
+    <label for="password-input">New password</label>
+    <input id="password-input" type="password" required minlength="8" autocomplete="new-password">
+    <p id="password-error" class="form-status" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" id="password-cancel" class="quiet">Cancel</button>
+      <button type="submit" id="password-save">Save</button>
     </div>
   </form>
 </dialog>

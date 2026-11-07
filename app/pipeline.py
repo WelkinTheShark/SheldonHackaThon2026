@@ -52,6 +52,7 @@ class Plan:
     ideal: str = ""
     decided_by: str = ""
     simulated: bool = False
+    text: str = ""
 
 
 @dataclass
@@ -96,6 +97,8 @@ def _fields(ctx: Context, requested: str, model: str, status: str, reason: str, 
         "ideal_model": plan.ideal if plan else "",
         "decided_by": plan.decided_by if plan else "",
         "simulated": int(plan.simulated) if plan else 0,
+        "prompt_text": plan.text[: config.ROAST_MAX_CHARS] if plan else "",
+        "prompt_hash": rules.prompt_hash(plan.text) if plan else "",
     }
 
 
@@ -161,8 +164,12 @@ async def _prepare(content: bytes, body: dict, ctx: Context) -> Plan | Outcome:
         requested, requested, ctx.ok_status, "", content, content,
         snippet=rules.snippet(text), simulated=simulated,
     )
-    # Background Claude Code calls aren't the developer's choice, so they run as sent and unrated.
-    if not ctx.rate or ctx.request_class not in {"", "main"}:
+    # Only a person's own words are kept, so the call can be roasted later. Background Claude Code
+    # calls aren't the developer's choice, so they keep no text and run as sent and unrated.
+    if ctx.request_class not in {"", "main"}:
+        return plan
+    plan.text = text
+    if not ctx.rate:
         return plan
 
     prior = store.prompt_decision(ctx.prompt_id) if ctx.prompt_id else None
@@ -206,15 +213,17 @@ def _live_roast(ctx: Context, plan: Plan, verdict: Verdict, text: str) -> None:
     from . import roast  # roast imports this module
 
     points, issues = roast.score(text, len(text) // 4)
-    store.add_live_roast(
+    store.add_roast(
+        source="live",
         developer_id=ctx.developer_id,
-        prompt_id=ctx.prompt_id,
+        prompt_hash=rules.prompt_hash(text),
         snippet=plan.snippet,
         score=points,
         issues=issues,
         ideal_model=verdict.ideal,
         decided_by=verdict.decided_by,
         note=verdict.note,
+        simulated=int(plan.simulated),
     )
 
 

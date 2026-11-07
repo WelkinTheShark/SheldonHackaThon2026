@@ -7,6 +7,12 @@ The final W1 and W2 runs must be against the final build, with real Claude calls
 responses must be off. Rehearsal runs can use it, and their rows are marked Simulated.
 Expected results check labels and amounts, never Claude's wording, because replies vary.
 
+**Sign-in.** The page asks for a username and password. Create a demo login with all access first,
+in the Users section or with `python -m app.devs add "wren" --team Demo --access all` and then
+`python -m app.devs password "wren"`. Start every test with: "Open the app, enter wren as the
+Username and <the password> as the Password, and click Sign in." Use a demo-only password, since it
+is pasted into Wren. Each step below that says "Open the app" means after signing in.
+
 ## W1: Catch and fix overkill (required)
 
 Task: A developer finds a wasteful call and stops it from happening again.
@@ -54,14 +60,23 @@ Expected:
 2. Enter "You are an expert. Please summarize this. Please summarize this." as the prompt.
 3. Click Roast this prompt.
 4. Click Roast this prompt again.
-5. Click the Roast My Stack heading to collapse it, then click it again to open it.
+5. Click the older run's heading in Roast results to open it.
 
 Expected:
-- A Roast My Stack section appears above Live calls and says 2 runs.
-- The newest run shows a score out of 100, at least one issue, a suggested fix, and a receipt
-  naming the model and cost.
-- The older run stays listed and collapsed.
-- The section's contents hide when collapsed and return when opened.
+- The Roast results panel to the right of Live calls says 2 runs.
+- The newest run is open and shows a score out of 100, at least one issue, a suggested fix, and a
+  receipt naming the model and cost.
+- The older run opens when clicked.
+
+## W4c: Roast a call that already ran
+
+1. Open the app and click Reset demo.
+2. Click the Simple task example and click Send call.
+3. In Live calls, click the Roast button on that call's row.
+
+Expected:
+- A run appears in Roast results with a score out of 100 and a suggested fix.
+- The call's Roast button now shows the same score out of 100.
 
 ## W4b: Take or override the recommended model
 
@@ -91,8 +106,9 @@ Expected: The call appears on Opus 5.5 with the status OK, and not Overkill or D
 
 1. Open the app with no other instructions.
 
-Expected: The page says what the product does, shows "No calls yet. Send one on the left.", and
-makes it clear how to send a first call.
+Expected: Before signing in, the page asks for a token and says what the product does. After
+signing in, it shows "No calls yet. Send one on the left." and makes it clear how to send a first
+call.
 
 ## W7: Move the routing level
 
@@ -109,7 +125,8 @@ Expected:
 
 ## W8: Compare developers
 
-Create two developers first with `python -m app.devs add`. This test uses the names Ada and Grace.
+Create two developers first, in the Users section or with `python -m app.devs add`. This test uses
+the names Ada and Grace.
 
 1. Open the app and click Reset demo.
 2. Choose Ada as the developer and Opus 5.5 as the model, then click the Simple task example.
@@ -121,6 +138,30 @@ Expected:
 - Each row in Live calls shows its developer, an Ideal model of Haiku 5.5, and a Used model.
 - The Developer leaderboard ranks Grace first at 0.0% overuse, and Ada second with higher overuse.
 - Each developer shows 5 prompts.
+
+## U2: Make a demo login
+
+1. Open the app without signing in.
+2. Click Demo, create new token.
+3. Enter a new username and a password of at least 8 characters, and click Create login and token.
+4. Click Continue.
+
+Expected:
+- A dialog says the demo login is ready and shows a token and Claude Code settings.
+- After Continue, the page says it is signed in as the new username, on team Demo, with Self access.
+
+## U1: Manage users
+
+1. Open the app. Scroll to Users.
+2. Enter "Barbara" as the Username and "Core" as the Team, choose Team access, and click Create user
+   and token.
+3. Click New token on Barbara's row and accept the prompt.
+4. Click Set in Barbara's Password column, enter a password of at least 8 characters, and click Save.
+
+Expected:
+- Barbara appears in the Users table with team Core and Team access.
+- A token box shows a first token after step 2 and a different token after step 3.
+- Barbara's Password column says Set.
 
 ## E1 and E4: Bad input and reset
 

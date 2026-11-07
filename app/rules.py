@@ -1,4 +1,5 @@
 """Plain rules for sorting tasks and spotting loops. Jev goes first when it is configured."""
+import hashlib
 import json
 import re
 
@@ -47,6 +48,12 @@ def last_user_text(messages: list) -> str:
             )
         return REMINDER.sub("", content).strip() if isinstance(content, str) else ""
     return ""
+
+
+def prompt_hash(text: str) -> str:
+    """Matches a roast to a call when the same words were roasted and then sent unchanged."""
+    text = text.strip()
+    return hashlib.sha256(text.encode()).hexdigest() if text else ""
 
 
 def snippet(text: str) -> str:

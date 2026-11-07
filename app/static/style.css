@@ -158,23 +158,51 @@ tr.new .stamp:not(.ok) { animation: stamp .22s ease-out; }
 .why h3 { margin-top: 0; }
 .why p { margin: .15rem 0; max-width: 62ch; }
 
-/* Roast history sits above the ledger and stays capped so Live calls stays in reach. */
-.roasts { margin-bottom: 1.75rem; border-bottom: 2px solid var(--ink); }
-.roasts > summary {
-  display: flex;
-  align-items: baseline;
-  gap: .6rem;
-  padding-bottom: .35rem;
-  border-bottom: 2px solid var(--ink);
-  cursor: pointer;
-  list-style: none;
+/* Live calls on the left, the roasts of those calls on the right. */
+.ledger-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem); gap: clamp(1.25rem, 3vw, 2.5rem); align-items: start; }
+.roasts { padding-left: clamp(1rem, 2vw, 1.5rem); border-left: 2px solid var(--ink); }
+.roasts h2 { padding-bottom: .35rem; border-bottom: 2px solid var(--ink); }
+.roast-count { color: var(--steel); font: 400 1rem var(--body); }
+.roast-runs { max-height: 40rem; overflow-y: auto; }
+.run > summary::-webkit-details-marker { display: none; }
+.run > summary::before { content: "\25B8"; color: var(--steel); }
+.run[open] > summary::before { content: "\25BE"; }
+.run.selected { background: var(--slip); }
+.run-tags { grid-column: 2 / -1; color: var(--steel); font-size: .9rem; }
+.run-tags .sim { color: var(--caution); font-weight: 600; }
+
+.roast-button {
+  padding: .1rem .55rem;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--ink);
+  font-size: .9rem;
 }
-.roasts > summary::-webkit-details-marker, .run > summary::-webkit-details-marker { display: none; }
-.roasts > summary::before, .run > summary::before { content: "\25B8"; color: var(--steel); }
-.roasts[open] > summary::before, .run[open] > summary::before { content: "\25BE"; }
-.roasts h2 { margin: 0; }
-.roast-count { color: var(--steel); }
-.roast-runs { max-height: 32rem; overflow-y: auto; }
+.roast-button.scored { border-color: var(--cleared); color: var(--cleared); font-variant-numeric: tabular-nums; }
+
+.session { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; justify-content: flex-end; }
+.who { margin: 0; color: var(--steel); }
+body:not(.can-manage) .manage-only { display: none !important; }
+
+.users { margin-top: 2rem; }
+.users td input[type="text"], .users td select { min-width: 7rem; padding: .3rem .4rem; }
+input[type="text"], input[type="password"] {
+  width: 100%;
+  padding: .5rem .6rem;
+  border: 1px solid var(--steel);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+.user-form { max-width: 40rem; margin-top: 1rem; }
+.user-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.user-form button[type="submit"] { width: auto; }
+.token-box { max-width: 40rem; margin-top: 1rem; padding: 1rem; border: 2px solid var(--cleared); }
+.token-box h3 { margin-top: 0; }
+.token-box textarea { font: .85rem/1.4 ui-monospace, Consolas, monospace; }
+.token-box .secondary { width: auto; }
 
 .run + .run { border-top: 1px solid var(--rule); }
 .run > summary {
@@ -197,13 +225,25 @@ tr.new .stamp:not(.ok) { animation: stamp .22s ease-out; }
 .verdict ul { margin: .25rem 0; padding-left: 1.15rem; }
 .verdict p { max-width: 62ch; margin: .25rem 0; overflow-wrap: anywhere; }
 
+dialog.signin { width: min(26rem, 92vw); }
+.signin .dialog-actions { justify-content: space-between; margin-top: .75rem; }
+.signin textarea { font: .85rem/1.4 ui-monospace, Consolas, monospace; }
+.token-signin { margin-top: 1.25rem; padding-top: .75rem; border-top: 1px solid var(--rule); }
+.token-signin summary { color: var(--steel); cursor: pointer; }
+.primary { padding: .65rem 1rem; border: 2px solid var(--ink); border-radius: 2px; background: var(--ink); color: #fff; }
 dialog { padding: 1.5rem; border: 2px solid var(--ink); border-radius: 2px; color: var(--ink); width: min(22rem, 92vw); }
 dialog::backdrop { background: rgba(20, 48, 74, .45); }
 .dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 1rem; }
 .dialog-actions button[type="submit"] { width: auto; margin-top: 0; }
 
+@media (max-width: 1250px) {
+  .ledger-grid { grid-template-columns: minmax(0, 1fr); }
+  .roasts { padding-left: 0; border-left: 0; }
+}
+
 @media (max-width: 800px) {
   .room { grid-template-columns: minmax(0, 1fr); }
+  .user-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

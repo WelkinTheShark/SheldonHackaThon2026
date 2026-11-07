@@ -148,7 +148,8 @@ def client(tmp_path, monkeypatch, anthropic):
     monkeypatch.setattr(config.settings, "api_key", "upstream-secret")
     monkeypatch.setattr(config.settings, "typesafe_api_key", "")
     monkeypatch.setattr(config.settings, "hard_cap_usd", 5.0)
-    with TestClient(main.app) as test_client:
+    # The page signs in with a token. Tests act as the gateway Admin unless they say otherwise.
+    with TestClient(main.app, headers={"x-cavedawg-token": "gateway-secret"}) as test_client:
         yield test_client
     store._db.close()
     store._db = None

@@ -1,5 +1,6 @@
 """SQLite storage. Full prompts and replies are never saved, only a short snippet and metadata."""
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -34,17 +35,29 @@ CREATE TABLE IF NOT EXISTS developers (
     swaps_allowed INTEGER NOT NULL DEFAULT 1,
     created TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS live_roasts (
+CREATE TABLE IF NOT EXISTS roasts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
+    source TEXT NOT NULL,
     developer_id INTEGER,
-    prompt_id TEXT NOT NULL DEFAULT '',
+    prompt_hash TEXT NOT NULL DEFAULT '',
     snippet TEXT NOT NULL DEFAULT '',
     score INTEGER NOT NULL,
     issues TEXT NOT NULL DEFAULT '[]',
+    fix TEXT NOT NULL DEFAULT '',
     ideal_model TEXT NOT NULL DEFAULT '',
     decided_by TEXT NOT NULL DEFAULT '',
-    note TEXT NOT NULL DEFAULT ''
+    note TEXT NOT NULL DEFAULT '',
+    receipt_model TEXT NOT NULL DEFAULT '',
+    cost_usd REAL NOT NULL DEFAULT 0,
+    receipt_note TEXT NOT NULL DEFAULT '',
+    simulated INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS roasts_prompt ON roasts (prompt_hash);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    developer_id INTEGER NOT NULL,
+    created TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS dev_time (
     developer_id INTEGER PRIMARY KEY,
@@ -63,7 +76,17 @@ CALL_COLUMNS = {
     "ideal_model": "TEXT NOT NULL DEFAULT ''",
     "decided_by": "TEXT NOT NULL DEFAULT ''",
     "simulated": "INTEGER NOT NULL DEFAULT 0",
+    # The person's own words, kept so a call can be roasted later. Never system prompts or replies.
+    "prompt_text": "TEXT NOT NULL DEFAULT ''",
+    "prompt_hash": "TEXT NOT NULL DEFAULT ''",
 }
+DEVELOPER_COLUMNS = {
+    "team": "TEXT NOT NULL DEFAULT ''",
+    "access": "TEXT NOT NULL DEFAULT 'self'",
+    "password_hash": "TEXT NOT NULL DEFAULT ''",
+}
+# scrypt settings for page passwords. Tokens stay on SHA-256 because they are long and random.
+SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
 
 
 def _migrate() -> None:
@@ -71,6 +94,11 @@ def _migrate() -> None:
     for name, definition in CALL_COLUMNS.items():
         if name not in existing:
             _db.execute(f"ALTER TABLE calls ADD COLUMN {name} {definition}")
+    existing = {row["name"] for row in _db.execute("PRAGMA table_info(developers)")}
+    for name, definition in DEVELOPER_COLUMNS.items():
+        if name not in existing:
+            _db.execute(f"ALTER TABLE developers ADD COLUMN {name} {definition}")
+    _db.execute("DROP TABLE IF EXISTS live_roasts")
     _db.execute("UPDATE OR IGNORE settings SET key = 'use_recommended' WHERE key = 'auto_downshift'")
     _db.execute("DELETE FROM settings WHERE key = 'auto_downshift'")
     _db.execute("CREATE INDEX IF NOT EXISTS calls_prompt ON calls (prompt_id)")
@@ -153,6 +181,12 @@ def add_call(**row) -> dict:
     return dict(saved)
 
 
+def get_call(call_id: int) -> dict | None:
+    with _lock:
+        row = _db.execute("SELECT * FROM calls WHERE id = ?", (call_id,)).fetchone()
+    return dict(row) if row else None
+
+
 def list_calls(limit: int = 100) -> list[dict]:
     """Newest first. A limit of -1 returns everything."""
     with _lock:
@@ -187,7 +221,7 @@ def reset() -> None:
     with _lock:
         _db.execute("DELETE FROM calls")
         _db.execute("DELETE FROM dev_time")
-        _db.execute("DELETE FROM live_roasts")
+        _db.execute("DELETE FROM roasts")
         _db.execute("DELETE FROM settings WHERE key IN ('budget_usd', 'use_recommended', 'level')")
         _db.commit()
 
@@ -197,14 +231,87 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def add_developer(name: str) -> tuple[dict, str]:
-    """Create a developer. The token is returned once and only its hash is kept."""
-    token = f"cd_{secrets.token_urlsafe(32)}"
+def _new_token() -> str:
+    return f"cd_{secrets.token_urlsafe(32)}"
+
+
+def _password_hash(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, **SCRYPT)
+    return f"scrypt${salt.hex()}${digest.hex()}"
+
+
+def _password_matches(password: str, stored: str) -> bool:
+    try:
+        _, salt, _ = stored.split("$")
+        expected = _password_hash(password, bytes.fromhex(salt))
+    except ValueError:
+        return False
+    return hmac.compare_digest(expected, stored)
+
+
+def set_password(developer_id: int, password: str) -> bool:
+    """Set a page password. Every open page session for that user ends."""
+    with _lock:
+        cursor = _db.execute(
+            "UPDATE developers SET password_hash = ? WHERE id = ?",
+            (_password_hash(password), developer_id),
+        )
+        _db.execute("DELETE FROM sessions WHERE developer_id = ?", (developer_id,))
+        _db.commit()
+    return cursor.rowcount > 0
+
+
+# Compared against when the username is unknown, so a miss takes as long as a wrong password.
+_DUMMY_HASH = _password_hash(secrets.token_urlsafe(16))
+
+
+def check_login(name: str, password: str) -> dict | None:
+    with _lock:
+        row = _db.execute("SELECT * FROM developers WHERE name = ?", (name,)).fetchone()
+    if row is None or not row["password_hash"]:
+        _password_matches(password, _DUMMY_HASH)
+        return None
+    return dict(row) if _password_matches(password, row["password_hash"]) else None
+
+
+def create_session(developer_id: int) -> str:
+    token = f"cs_{secrets.token_urlsafe(32)}"
     created = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with _lock:
         _db.execute(
-            "INSERT INTO developers (name, token_hash, created) VALUES (?, ?, ?)",
-            (name, _hash(token), created),
+            "INSERT INTO sessions (token_hash, developer_id, created) VALUES (?, ?, ?)",
+            (_hash(token), developer_id, created),
+        )
+        _db.commit()
+    return token
+
+
+def developer_by_session(token: str) -> dict | None:
+    with _lock:
+        row = _db.execute(
+            "SELECT developers.* FROM sessions JOIN developers ON developers.id = sessions.developer_id "
+            "WHERE sessions.token_hash = ?",
+            (_hash(token),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def end_session(token: str) -> None:
+    with _lock:
+        _db.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash(token),))
+        _db.commit()
+
+
+def add_developer(name: str, team: str = "", access: str = "self") -> tuple[dict, str]:
+    """Create a developer. The token is returned once and only its hash is kept."""
+    token = _new_token()
+    created = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with _lock:
+        _db.execute(
+            "INSERT INTO developers (name, team, access, token_hash, created) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (name, team, access, _hash(token), created),
         )
         _db.commit()
         row = _db.execute("SELECT * FROM developers WHERE name = ?", (name,)).fetchone()
@@ -231,6 +338,32 @@ def list_developers() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def update_developer(developer_id: int, **fields) -> dict | None:
+    """Change name, team, access or swaps_allowed. Unknown keys are ignored."""
+    fields = {k: v for k, v in fields.items() if k in {"name", "team", "access", "swaps_allowed"}}
+    with _lock:
+        if fields:
+            assignments = ", ".join(f"{key} = ?" for key in fields)
+            _db.execute(
+                f"UPDATE developers SET {assignments} WHERE id = ?",
+                (*fields.values(), developer_id),
+            )
+            _db.commit()
+        row = _db.execute("SELECT * FROM developers WHERE id = ?", (developer_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def rotate_token(developer_id: int) -> str | None:
+    """Issue a new token. The old one stops working at once."""
+    token = _new_token()
+    with _lock:
+        cursor = _db.execute(
+            "UPDATE developers SET token_hash = ? WHERE id = ?", (_hash(token), developer_id)
+        )
+        _db.commit()
+    return token if cursor.rowcount else None
+
+
 def set_swaps_allowed(name: str, allowed: bool) -> bool:
     with _lock:
         cursor = _db.execute(
@@ -240,22 +373,26 @@ def set_swaps_allowed(name: str, allowed: bool) -> bool:
     return cursor.rowcount > 0
 
 
-def add_live_roast(issues: list[str], **row) -> None:
+def _roast(row) -> dict:
+    return {**dict(row), "issues": json.loads(row["issues"])}
+
+
+def add_roast(issues: list[str], **row) -> dict:
     row["ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     row["issues"] = json.dumps(issues)
     columns, marks = ", ".join(row), ", ".join("?" for _ in row)
     with _lock:
-        _db.execute(f"INSERT INTO live_roasts ({columns}) VALUES ({marks})", tuple(row.values()))
+        cursor = _db.execute(f"INSERT INTO roasts ({columns}) VALUES ({marks})", tuple(row.values()))
         _db.commit()
+        saved = _db.execute("SELECT * FROM roasts WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return _roast(saved)
 
 
-def list_live_roasts(limit: int = 20) -> list[dict]:
+def list_roasts(limit: int = 200) -> list[dict]:
     """Newest first."""
     with _lock:
-        rows = _db.execute(
-            "SELECT * FROM live_roasts ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
-    return [{**dict(row), "issues": json.loads(row["issues"])} for row in rows]
+        rows = _db.execute("SELECT * FROM roasts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [_roast(row) for row in rows]
 
 
 def add_dev_time(developer_id: int, seconds: float) -> None:

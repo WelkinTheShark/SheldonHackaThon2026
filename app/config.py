@@ -69,6 +69,9 @@ LEVELS = {
     },
 }
 
+PASSWORD_MIN_CHARS = 8
+DEMO_TEAM = "Demo"
+
 OVERKILL_MAX_TOKENS = 4_000
 ROUTINE_MAX_TOKENS = 60
 LOOP_LIMIT = 3
@@ -101,6 +104,10 @@ class Settings:
     # Lifetime ceiling for a public demo. Reset demo does not clear it.
     hard_cap_usd: float = field(
         default_factory=lambda: float(os.environ.get("CAVEDAWG_HARD_CAP_USD", "5"))
+    )
+    # Access given to logins made with the sign-in page's Demo button: self, team, all, or off.
+    demo_access: str = field(
+        default_factory=lambda: os.environ.get("CAVEDAWG_DEMO_ACCESS", "self").strip().lower()
     )
 
 
