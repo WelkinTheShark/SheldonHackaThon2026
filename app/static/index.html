@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZeroDog: see and stop AI waste</title>
+<title>CaveDawg: see and stop AI waste</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,11 +12,13 @@
 <body>
 <header class="masthead">
   <div class="brand">
-    <h1>ZeroDog</h1>
+    <h1>CaveDawg</h1>
     <p>See what your AI calls cost, and stop the waste before you pay for it.</p>
   </div>
   <button type="button" id="reset" class="quiet">Reset demo</button>
 </header>
+
+<p id="simulated-banner" class="simulated-banner" role="status" hidden>Simulated responses are on. Nothing is sent to Anthropic, and amounts shown are estimates, not real spend.</p>
 
 <section class="meter" aria-label="Spending">
   <div class="meter-figures">
@@ -37,6 +39,11 @@
   <div class="room">
     <form id="call-form" class="composer">
       <h2>Try a call</h2>
+      <label class="toggle simulated-toggle">
+        <input type="checkbox" id="simulated">
+        <span>Simulated responses</span>
+      </label>
+      <p class="hint">On: canned replies and no token cost. Off: real Claude calls that spend tokens.</p>
       <label for="level">Routing level</label>
       <input type="range" id="level" min="1" max="4" step="1" value="2">
       <div id="level-ticks" class="level-ticks" aria-hidden="true"></div>
@@ -67,7 +74,7 @@
       <p class="hint">Runs each call on its ideal model, which can cost more at Thorough and Full power. Use a model anyway to override it once.</p>
 
       <button type="button" id="simulate" class="secondary">Simulate agent retry loop</button>
-      <p class="hint">Sends real Haiku calls that repeat one tool error until ZeroDog stops them.</p>
+      <p class="hint">Sends real Haiku calls that repeat one tool error until CaveDawg stops them.</p>
     </form>
 
     <section class="ledger" aria-labelledby="ledger-title">

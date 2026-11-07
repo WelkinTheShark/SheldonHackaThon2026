@@ -84,23 +84,23 @@ PROJECTION_CALLS_PER_DAY = 100
 @dataclass
 class Settings:
     api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
-    gateway_token: str = field(default_factory=lambda: os.environ.get("ZERODOG_GATEWAY_TOKEN", ""))
+    gateway_token: str = field(default_factory=lambda: os.environ.get("CAVEDAWG_GATEWAY_TOKEN", ""))
     upstream: str = field(
         default_factory=lambda: os.environ.get("ANTHROPIC_UPSTREAM", "https://api.anthropic.com")
     )
     typesafe_api_key: str = field(default_factory=lambda: os.environ.get("TYPESAFE_API_KEY", ""))
     jev_url: str = field(
         default_factory=lambda: os.environ.get(
-            "ZERODOG_JEV_URL", "https://api.typesafe.ai/v1/systemone"
+            "CAVEDAWG_JEV_URL", "https://api.typesafe.ai/v1/systemone"
         )
     )
     public_url: str = field(
-        default_factory=lambda: os.environ.get("ZERODOG_PUBLIC_URL", "http://127.0.0.1:8000")
+        default_factory=lambda: os.environ.get("CAVEDAWG_PUBLIC_URL", "http://127.0.0.1:8000")
     )
-    db_path: str = field(default_factory=lambda: os.environ.get("ZERODOG_DB", "data/zerodog.db"))
+    db_path: str = field(default_factory=lambda: os.environ.get("CAVEDAWG_DB", "data/cavedawg.db"))
     # Lifetime ceiling for a public demo. Reset demo does not clear it.
     hard_cap_usd: float = field(
-        default_factory=lambda: float(os.environ.get("ZERODOG_HARD_CAP_USD", "5"))
+        default_factory=lambda: float(os.environ.get("CAVEDAWG_HARD_CAP_USD", "5"))
     )
 
 

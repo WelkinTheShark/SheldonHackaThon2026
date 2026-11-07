@@ -40,7 +40,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="ZeroDog", lifespan=lifespan)
+app = FastAPI(title="CaveDawg", lifespan=lifespan)
 
 
 def _api_error(message: str, status: int = 400) -> JSONResponse:
@@ -152,6 +152,7 @@ async def count_tokens(request: Request):
             _forwarded_headers(request),
             request.url.query,
             path="/v1/messages/count_tokens",
+            simulated=store.get_settings()["simulated"],
         )
     except httpx.HTTPError as error:
         return _anthropic_error(
@@ -251,7 +252,7 @@ async def playground(call: PlaygroundCall):
 def _loop_messages(failures: int) -> list[dict]:
     messages = [{"role": "user", "content": LOOP_TASK}]
     for attempt in range(failures):
-        tool_id = f"toolu_zerodog_{attempt}"
+        tool_id = f"toolu_cavedawg_{attempt}"
         messages.append({
             "role": "assistant",
             "content": [{
@@ -310,6 +311,7 @@ class SettingsUpdate(BaseModel):
     budget_usd: float | None = None
     use_recommended: bool | None = None
     level: int | None = None
+    simulated: bool | None = None
 
 
 @app.put("/api/settings")
@@ -319,7 +321,7 @@ async def update_settings(update: SettingsUpdate):
         return _api_error("Enter a budget of $0 or more.")
     if update.level is not None and update.level not in config.LEVELS:
         return _api_error("Choose a level from 1 to 4.")
-    store.update_settings(budget, update.use_recommended, update.level)
+    store.update_settings(budget, update.use_recommended, update.level, update.simulated)
     return store.get_settings()
 
 
@@ -351,6 +353,20 @@ async def calls():
 @app.get("/api/history")
 async def history():
     return team.history()
+
+
+@app.get("/api/live-roasts")
+async def live_roasts():
+    """Rules-only roasts of each Claude Code prompt, newest first."""
+    names = {developer["id"]: developer["name"] for developer in store.list_developers()}
+    return [
+        {
+            **roast_row,
+            "developer": names.get(roast_row["developer_id"], team.UNATTRIBUTED),
+            "ideal_label": team.label(roast_row["ideal_model"]),
+        }
+        for roast_row in store.list_live_roasts()
+    ]
 
 
 @app.get("/api/leaderboard")

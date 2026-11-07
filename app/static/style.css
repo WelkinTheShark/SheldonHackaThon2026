@@ -108,6 +108,14 @@ button:disabled { opacity: .6; cursor: progress; }
 
 .toggle { display: flex; align-items: center; gap: .55rem; margin-top: 1.5rem; }
 .toggle input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--ink); }
+.simulated-toggle { margin-top: .5rem; font-weight: 600; }
+.simulated-banner {
+  margin: 0;
+  padding: .5rem clamp(1rem, 4vw, 3rem);
+  background: var(--caution);
+  color: #fff;
+  font-weight: 600;
+}
 .hint { margin: .2rem 0 0; color: var(--steel); font-size: .92rem; }
 
 .form-status { min-height: 1.5rem; margin: .4rem 0 0; font-weight: 500; }
@@ -182,6 +190,7 @@ tr.new .stamp:not(.ok) { animation: stamp .22s ease-out; }
 .run-score small { color: var(--steel); font: 400 .9rem var(--body); }
 .run-prompt { overflow: hidden; color: var(--steel); text-overflow: ellipsis; white-space: nowrap; }
 .run-time { color: var(--steel); font-variant-numeric: tabular-nums; }
+.run-source { margin-right: .5rem; color: var(--cleared); font-weight: 600; }
 
 .verdict { padding: 0 0 1rem 1.15rem; }
 .verdict h3:first-child { margin-top: .25rem; }

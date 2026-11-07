@@ -24,7 +24,7 @@ class Context:
     prompt_id: str = ""
     request_class: str = ""
     ok_status: str = "OK"
-    rate: bool = True  # False for ZeroDog's own calls, such as Roast.
+    rate: bool = True  # False for CaveDawg's own calls, such as Roast.
     may_swap: bool = False
     keep_model: bool = False
 
@@ -51,6 +51,7 @@ class Plan:
     kind: str = ""
     ideal: str = ""
     decided_by: str = ""
+    simulated: bool = False
 
 
 @dataclass
@@ -72,7 +73,9 @@ class Outcome:
 
 async def judge(tokens: int, has_tools: bool, text: str, level: int) -> Verdict:
     """Decide what a task is and which model suits it. Jev first, keyword rules as the fallback."""
-    kind = None if has_tools else await jev.classify(text)
+    # Jev is a paid outside call, so simulated mode leaves it to the keyword rules.
+    use_jev = not has_tools and not store.get_settings()["simulated"]
+    kind = await jev.classify(text) if use_jev else None
     decided_by = "Jev" if kind else "Rules"
     kind = kind or rules.classify(tokens, has_tools, text)
     return Verdict(kind, rules.model_for(kind, level), decided_by, rules.note(kind, level))
@@ -92,6 +95,7 @@ def _fields(ctx: Context, requested: str, model: str, status: str, reason: str, 
         "task_kind": plan.kind if plan else "",
         "ideal_model": plan.ideal if plan else "",
         "decided_by": plan.decided_by if plan else "",
+        "simulated": int(plan.simulated) if plan else 0,
     }
 
 
@@ -104,8 +108,8 @@ def _input_cost_estimate(model: str, tokens: int) -> float:
     return costs.call_cost(model, tokens, 0) or 0.0
 
 
-def _check_limits(ctx: Context, model: str, body: dict) -> Outcome | None:
-    if store.lifetime_spend() >= config.settings.hard_cap_usd:
+def _check_limits(ctx: Context, model: str, body: dict, simulated: bool) -> Outcome | None:
+    if not simulated and store.lifetime_spend() >= config.settings.hard_cap_usd:
         return _refuse(
             ctx, model, "Demo limit reached",
             f"This demo has reached its ${config.settings.hard_cap_usd:.2f} spending limit.",
@@ -146,14 +150,16 @@ async def _verdict_for(ctx: Context, body: dict, text: str, level: int) -> Verdi
 
 async def _prepare(content: bytes, body: dict, ctx: Context) -> Plan | Outcome:
     requested = str(body.get("model", "unknown"))
-    refused = _check_limits(ctx, requested, body)
+    # Read once, so the row always says where this call really went.
+    simulated = store.get_settings()["simulated"]
+    refused = _check_limits(ctx, requested, body, simulated)
     if refused:
         return refused
 
     text = rules.last_user_text(body.get("messages", []))
     plan = Plan(
         requested, requested, ctx.ok_status, "", content, content,
-        snippet=rules.snippet(text),
+        snippet=rules.snippet(text), simulated=simulated,
     )
     # Background Claude Code calls aren't the developer's choice, so they run as sent and unrated.
     if not ctx.rate or ctx.request_class not in {"", "main"}:
@@ -177,6 +183,8 @@ async def _prepare(content: bytes, body: dict, ctx: Context) -> Plan | Outcome:
     if verdict is None:
         return plan
     plan.kind, plan.ideal, plan.decided_by = verdict.kind, verdict.ideal, verdict.decided_by
+    if ctx.source == "proxy" and ctx.request_class == "main":
+        _live_roast(ctx, plan, verdict, text)
 
     swap = (
         ctx.may_swap
@@ -191,6 +199,23 @@ async def _prepare(content: bytes, body: dict, ctx: Context) -> Plan | Outcome:
         plan.model = verdict.ideal
         plan.content = _swap_model(body, verdict.ideal)
     return plan
+
+
+def _live_roast(ctx: Context, plan: Plan, verdict: Verdict, text: str) -> None:
+    """Score a Claude Code prompt with the Roast rules, once per prompt and with no model call."""
+    from . import roast  # roast imports this module
+
+    points, issues = roast.score(text, len(text) // 4)
+    store.add_live_roast(
+        developer_id=ctx.developer_id,
+        prompt_id=ctx.prompt_id,
+        snippet=plan.snippet,
+        score=points,
+        issues=issues,
+        ideal_model=verdict.ideal,
+        decided_by=verdict.decided_by,
+        note=verdict.note,
+    )
 
 
 def _status_for(ctx: Context, plan: Plan, swap: bool) -> tuple[str, str]:
@@ -246,15 +271,19 @@ def _unreachable(ctx: Context, plan: Plan, error: httpx.HTTPError) -> Outcome:
     return Outcome("Error", row, http_status=502, message=reason)
 
 
+async def _send(plan: Plan, ctx: Context) -> httpx.Response:
+    return await upstream.post(plan.content, ctx.headers, ctx.query, simulated=plan.simulated)
+
+
 async def run(content: bytes, body: dict, ctx: Context) -> Outcome:
     plan = await _prepare(content, body, ctx)
     if isinstance(plan, Outcome):
         return plan
     try:
-        response = await upstream.post(plan.content, ctx.headers, ctx.query)
+        response = await _send(plan, ctx)
         if _swap_was_rejected(plan, response.status_code):
             _fall_back(plan)
-            response = await upstream.post(plan.content, ctx.headers, ctx.query)
+            response = await _send(plan, ctx)
     except httpx.HTTPError as error:
         return _unreachable(ctx, plan, error)
 
@@ -308,7 +337,9 @@ class Stream:
 
 
 async def _open(plan: Plan, ctx: Context) -> tuple[httpx.AsyncClient, httpx.Response]:
-    return await upstream.open_stream(plan.content, ctx.headers, ctx.query)
+    return await upstream.open_stream(
+        plan.content, ctx.headers, ctx.query, simulated=plan.simulated
+    )
 
 
 async def stream(content: bytes, body: dict, ctx: Context) -> Stream | Outcome:

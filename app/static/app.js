@@ -23,13 +23,15 @@ const STAMPS = {
 };
 
 // Full roast results stay in this browser. The server keeps only a short snippet.
-const ROAST_KEY = "zerodog.roasts";
+const ROAST_KEY = "cavedawg.roasts";
 const ROAST_LIMIT = 20;
 const ROAST_PROMPT_CHARS = 80;
 
 let newestSeen = 0;
 let modelsLoaded = false;
 let roastRuns = loadRoasts();
+let liveRuns = [];
+let liveKey = "";
 let pickedModel = null;
 let keepNext = false;
 let levels = [];
@@ -110,6 +112,7 @@ function renderCalls(rows) {
       if (["Error", "Dropped", "Swap failed"].includes(call.status)) {
         status.append(element("span", "row-note", call.reason));
       }
+      if (call.simulated) status.append(element("span", "row-note", "Simulated"));
       row.append(status);
       return row;
     }),
@@ -195,6 +198,8 @@ function renderSummary(summary) {
   $("meter-bar").setAttribute("aria-valuenow", Math.round(percent));
   document.querySelector(".meter").classList.toggle("over", percent >= 100);
   $("use-recommended").checked = summary.use_recommended;
+  $("simulated").checked = summary.simulated;
+  $("simulated-banner").hidden = !summary.simulated;
   renderFlag(summary.latest_flag);
   renderDevelopers(summary.developers);
 
@@ -220,14 +225,16 @@ function renderSummary(summary) {
 }
 
 async function refresh() {
-  const [summary, history, board] = await Promise.all([
+  const [summary, history, board, live] = await Promise.all([
     api("/api/summary"),
     api("/api/history"),
     api("/api/leaderboard"),
+    api("/api/live-roasts"),
   ]);
   renderSummary(summary);
   renderCalls(history);
   renderBoard(board);
+  updateLiveRuns(live);
 }
 
 async function refreshQuietly() {
@@ -283,6 +290,18 @@ $("real-design").addEventListener("click", () => {
   clearOffer();
   $("prompt").value = EXAMPLES.design;
   $("prompt").focus();
+});
+
+$("simulated").addEventListener("change", async (event) => {
+  const on = event.target.checked;
+  try {
+    await api("/api/settings", { method: "PUT", body: JSON.stringify({ simulated: on }) });
+    $("simulated-banner").hidden = !on;
+    setStatus($("form-status"), on ? "Simulated responses are on." : "Real Claude calls are on.");
+  } catch (error) {
+    event.target.checked = !on;
+    setStatus($("form-status"), error.message, true);
+  }
 });
 
 $("use-recommended").addEventListener("change", async (event) => {
@@ -384,32 +403,62 @@ function renderRun(run, open) {
   score.append(element("small", "", " out of 100"));
   const time = new Date(run.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const summary = element("summary");
-  summary.append(score, element("span", "run-prompt", run.prompt), element("span", "run-time", time));
+  const prompt = element("span", "run-prompt", run.prompt);
+  if (run.live) prompt.prepend(element("span", "run-source", `Claude Code · ${run.developer}`));
+  summary.append(score, prompt, element("span", "run-time", time));
 
   const issues = element("ul");
   for (const issue of run.issues.length ? run.issues : ["No issues found."]) {
     issues.append(element("li", "", issue));
   }
-  const { model, cost_usd: cost, note } = run.receipt;
   const verdict = element("div", "verdict");
-  verdict.append(
-    element("h3", "", "Issues found"),
-    issues,
-    element("h3", "", "Suggested fix"),
-    element("p", "", run.fix),
-    element("h3", "", "Recommended model"),
-    element("p", "", recommendationText(run.recommendation)),
-    element("h3", "", "Receipt"),
-    element("p", "", `${model}, ${money(cost)}. ${note}`),
-  );
+  verdict.append(element("h3", "", "Issues found"), issues);
+  if (run.live) {
+    verdict.append(
+      element("h3", "", "Recommended model"),
+      element("p", "", recommendationText(run.recommendation)),
+      element("p", "hint", "Scored by rules as the prompt was sent, so no fix was written."),
+    );
+  } else {
+    const { model, cost_usd: cost, note } = run.receipt;
+    verdict.append(
+      element("h3", "", "Suggested fix"),
+      element("p", "", run.fix),
+      element("h3", "", "Recommended model"),
+      element("p", "", recommendationText(run.recommendation)),
+      element("h3", "", "Receipt"),
+      element("p", "", `${model}, ${money(cost)}. ${note}`),
+    );
+  }
   details.append(summary, verdict);
   return details;
 }
 
+// Claude Code prompts are roasted on the server as they arrive. Only redraw when that list
+// changes, so a run someone opened stays open between polls.
+function updateLiveRuns(rows) {
+  const key = rows.map((row) => row.id).join(",");
+  if (key === liveKey) return;
+  const grew = rows.length > 0 && !liveKey.startsWith(String(rows[0].id));
+  liveKey = key;
+  liveRuns = rows.map((row) => ({
+    live: true,
+    ts: row.ts,
+    prompt: row.snippet,
+    developer: row.developer,
+    score: row.score,
+    issues: row.issues,
+    recommendation: { label: row.ideal_label, reason: row.note, decided_by: row.decided_by },
+  }));
+  renderRoasts();
+  if (grew) $("roasts").open = true;
+}
+
 function renderRoasts() {
-  $("roasts").hidden = roastRuns.length === 0;
-  $("roast-count").textContent = roastRuns.length === 1 ? "1 run" : `${roastRuns.length} runs`;
-  $("roast-runs").replaceChildren(...roastRuns.map((run, index) => renderRun(run, index === 0)));
+  const runs = [...liveRuns, ...roastRuns].sort((a, b) => b.ts.localeCompare(a.ts));
+  $("roasts").hidden = runs.length === 0;
+  $("roast-count").textContent = runs.length === 1 ? "1 run" : `${runs.length} runs`;
+  $("roast-runs").replaceChildren(...runs.map((run, index) => renderRun(run, index === 0)));
 }
 
 function modelLabel(id) {

@@ -212,8 +212,8 @@ def test_reset_clears_activity_but_keeps_developers(client, developer):
 
 
 def test_setup_output_has_what_claude_code_needs():
-    env = devs.claude_code_settings("zd_token")["env"]
-    assert env["ANTHROPIC_AUTH_TOKEN"] == "zd_token"
+    env = devs.claude_code_settings("cd_token")["env"]
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "cd_token"
     assert env["CLAUDE_CODE_GATEWAY_HINT_HEADERS"] == "1"
     assert env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
     assert env["OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE"] == "delta"

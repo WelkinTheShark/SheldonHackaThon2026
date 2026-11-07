@@ -1,4 +1,4 @@
-"""Sends text from stdin to ZeroDog's Roast and prints the result. Standard library only."""
+"""Sends text from stdin to CaveDawg's Roast and prints the result. Standard library only."""
 import json
 import os
 import sys
@@ -7,11 +7,11 @@ import urllib.request
 
 
 def main() -> int:
-    url = os.environ.get("ZERODOG_URL", "").rstrip("/")
-    token = os.environ.get("ZERODOG_TOKEN", "")
+    url = os.environ.get("CAVEDAWG_URL", "").rstrip("/")
+    token = os.environ.get("CAVEDAWG_TOKEN", "")
     text = sys.stdin.read().strip()
     if not url or not token:
-        print("Set ZERODOG_URL and ZERODOG_TOKEN. python -m app.devs add prints both.")
+        print("Set CAVEDAWG_URL and CAVEDAWG_TOKEN. python -m app.devs add prints both.")
         return 1
     if not text:
         print("Nothing to roast. Add a prompt after /roast.")
@@ -26,7 +26,7 @@ def main() -> int:
         with urllib.request.urlopen(request, timeout=60) as response:
             result = json.load(response)
     except (urllib.error.URLError, ValueError) as error:
-        print(f"ZeroDog couldn't roast this: {error}")
+        print(f"CaveDawg couldn't roast this: {error}")
         return 1
 
     recommendation = result["recommendation"]

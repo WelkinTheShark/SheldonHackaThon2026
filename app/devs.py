@@ -24,8 +24,8 @@ def claude_code_settings(token: str) -> dict:
             "OTEL_EXPORTER_OTLP_ENDPOINT": url,
             "OTEL_EXPORTER_OTLP_HEADERS": f"x-api-key={token}",
             "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "delta",
-            "ZERODOG_URL": url,
-            "ZERODOG_TOKEN": token,
+            "CAVEDAWG_URL": url,
+            "CAVEDAWG_TOKEN": token,
         }
     }
 
@@ -58,7 +58,7 @@ def swaps(name: str, state: str) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Manage ZeroDog developer tokens.")
+    parser = argparse.ArgumentParser(description="Manage CaveDawg developer tokens.")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("add").add_argument("name")
     commands.add_parser("list")

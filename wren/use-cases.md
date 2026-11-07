@@ -3,7 +3,8 @@
 Paste each test into Wren, pointed at the deployed URL. W1 and W2 are the two required core
 workflows. Runs cost $3 each after the first 10, so run W1 and W2 most and the others once.
 
-The final W1 and W2 runs must be against the final build, with real Claude calls.
+The final W1 and W2 runs must be against the final build, with real Claude calls, so Simulated
+responses must be off. Rehearsal runs can use it, and their rows are marked Simulated.
 Expected results check labels and amounts, never Claude's wording, because replies vary.
 
 ## W1: Catch and fix overkill (required)

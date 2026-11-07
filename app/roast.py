@@ -46,11 +46,15 @@ def find_issues(text: str, tokens: int) -> list[dict]:
     return issues
 
 
+def score(text: str, tokens: int) -> tuple[int, list[str]]:
+    issues = find_issues(text, tokens)
+    return max(100 - sum(i["penalty"] for i in issues), 0), [i["text"] for i in issues]
+
+
 async def run(text: str, developer_id: int | None = None) -> dict:
     body_probe = {"messages": [{"role": "user", "content": text}]}
     tokens = rules.estimate_tokens(body_probe)
-    issues = find_issues(text, tokens)
-    score = max(100 - sum(i["penalty"] for i in issues), 0)
+    points, issues = score(text, tokens)
 
     long_setup = tokens >= config.ROAST_SONNET_MIN_TOKENS or _tool_count(text) > 0
     model = config.SONNET if long_setup else config.HAIKU
@@ -85,8 +89,8 @@ async def run(text: str, developer_id: int | None = None) -> dict:
         tokens, has_tools, "" if has_tools else text, store.get_settings()["level"]
     )
     return {
-        "score": score,
-        "issues": [i["text"] for i in issues],
+        "score": points,
+        "issues": issues,
         "fix": fix,
         "recommendation": {
             "model": verdict.ideal,

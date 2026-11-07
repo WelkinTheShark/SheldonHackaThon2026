@@ -1,5 +1,6 @@
 """SQLite storage. Full prompts and replies are never saved, only a short snippet and metadata."""
 import hashlib
+import json
 import os
 import secrets
 import sqlite3
@@ -33,6 +34,18 @@ CREATE TABLE IF NOT EXISTS developers (
     swaps_allowed INTEGER NOT NULL DEFAULT 1,
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS live_roasts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    developer_id INTEGER,
+    prompt_id TEXT NOT NULL DEFAULT '',
+    snippet TEXT NOT NULL DEFAULT '',
+    score INTEGER NOT NULL,
+    issues TEXT NOT NULL DEFAULT '[]',
+    ideal_model TEXT NOT NULL DEFAULT '',
+    decided_by TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS dev_time (
     developer_id INTEGER PRIMARY KEY,
     seconds REAL NOT NULL DEFAULT 0
@@ -49,6 +62,7 @@ CALL_COLUMNS = {
     "task_kind": "TEXT NOT NULL DEFAULT ''",
     "ideal_model": "TEXT NOT NULL DEFAULT ''",
     "decided_by": "TEXT NOT NULL DEFAULT ''",
+    "simulated": "INTEGER NOT NULL DEFAULT 0",
 }
 
 
@@ -96,6 +110,7 @@ def get_settings() -> dict:
             "budget_usd": float(_get("budget_usd", str(config.DEFAULT_BUDGET_USD))),
             "use_recommended": _get("use_recommended", "0") == "1",
             "level": int(_get("level", str(config.DEFAULT_LEVEL))),
+            "simulated": _get("simulated", "0") == "1",
         }
 
 
@@ -103,6 +118,7 @@ def update_settings(
     budget_usd: float | None = None,
     use_recommended: bool | None = None,
     level: int | None = None,
+    simulated: bool | None = None,
 ) -> None:
     with _lock:
         if budget_usd is not None:
@@ -111,6 +127,8 @@ def update_settings(
             _set("use_recommended", "1" if use_recommended else "0")
         if level is not None:
             _set("level", str(level))
+        if simulated is not None:
+            _set("simulated", "1" if simulated else "0")
         _db.commit()
 
 
@@ -127,7 +145,8 @@ def add_call(**row) -> dict:
         cursor = _db.execute(
             f"INSERT INTO calls ({columns}) VALUES ({marks})", tuple(row.values())
         )
-        if row.get("cost_usd"):
+        # Simulated amounts are estimates, not money, so they never count toward the hard cap.
+        if row.get("cost_usd") and not row.get("simulated"):
             _set("lifetime_spend", repr(float(_get("lifetime_spend", "0")) + row["cost_usd"]))
         _db.commit()
         saved = _db.execute("SELECT * FROM calls WHERE id = ?", (cursor.lastrowid,)).fetchone()
@@ -168,6 +187,7 @@ def reset() -> None:
     with _lock:
         _db.execute("DELETE FROM calls")
         _db.execute("DELETE FROM dev_time")
+        _db.execute("DELETE FROM live_roasts")
         _db.execute("DELETE FROM settings WHERE key IN ('budget_usd', 'use_recommended', 'level')")
         _db.commit()
 
@@ -179,7 +199,7 @@ def _hash(token: str) -> str:
 
 def add_developer(name: str) -> tuple[dict, str]:
     """Create a developer. The token is returned once and only its hash is kept."""
-    token = f"zd_{secrets.token_urlsafe(32)}"
+    token = f"cd_{secrets.token_urlsafe(32)}"
     created = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with _lock:
         _db.execute(
@@ -218,6 +238,24 @@ def set_swaps_allowed(name: str, allowed: bool) -> bool:
         )
         _db.commit()
     return cursor.rowcount > 0
+
+
+def add_live_roast(issues: list[str], **row) -> None:
+    row["ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    row["issues"] = json.dumps(issues)
+    columns, marks = ", ".join(row), ", ".join("?" for _ in row)
+    with _lock:
+        _db.execute(f"INSERT INTO live_roasts ({columns}) VALUES ({marks})", tuple(row.values()))
+        _db.commit()
+
+
+def list_live_roasts(limit: int = 20) -> list[dict]:
+    """Newest first."""
+    with _lock:
+        rows = _db.execute(
+            "SELECT * FROM live_roasts ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [{**dict(row), "issues": json.loads(row["issues"])} for row in rows]
 
 
 def add_dev_time(developer_id: int, seconds: float) -> None:

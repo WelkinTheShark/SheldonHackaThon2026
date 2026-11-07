@@ -79,6 +79,7 @@ def history(limit: int = config.HISTORY_LIMIT) -> list[dict]:
             "cost_usd": sum(c["cost_usd"] for c in calls),
             "status": shown["status"],
             "reason": shown["reason"],
+            "simulated": any(c["simulated"] for c in calls),
         })
     rows.sort(key=lambda row: row["id"], reverse=True)
     return rows[:limit]
