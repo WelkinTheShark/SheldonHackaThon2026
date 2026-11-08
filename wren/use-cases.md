@@ -14,11 +14,12 @@ takes 15 minutes or more.
 **Simulated responses.** Test runs use canned replies and no Anthropic spend; rows are marked
 Simulated. Expected results check labels and amounts, never Claude's wording.
 
-**Budgets.** Every user's budget defaults to $1000, and so does the shared team budget.
+**Defaults and cleanup.** New users get Team access and a $1000 budget, and the shared team budget
+is $1000. Tests that create a user (U1, U2) delete it as their last step.
 
 **Sign-in.** Every test signs in as `wren`, an All-access demo login (`python -m app.devs add "wren"
 --team Demo --access all`, then `python -m app.devs password "wren"`). Without it, Wren makes its
-own Self-access login, which can't move the Routing level slider. Use a demo-only password.
+own login, which can't move the Routing level slider without All access. Use a demo-only password.
 
 **No reset.** Live calls already holds older rows. New rows appear at the top, and each test
 checks only the rows it adds.
@@ -93,18 +94,23 @@ Opus 5.5 with status OK.
 
 Opens straight on User management (`/#users`).
 
-1. In Add a user, enter a new username such as "Barbara" plus four digits, team "Core", Team
-   access, and click Create user and token.
+1. In Add a user, enter a new username such as "Barbara" plus four digits and team "Core", leave
+   Access on Team, and click Create user and token.
+2. Clean up: click Delete on that user's row and accept the confirmation.
 
-Expected: a token box appears and the new user is listed with team Core and Team access.
+Expected: a token box appears and the new user is listed with team Core and Team access; after
+Delete, the user is gone from the table.
 
 ## U2: Make a demo login
 
 1. Click Sign out, then Demo, create new token.
 2. Enter a new username such as "demo" plus four digits and a password of at least 8 characters,
    leave Team and Access as they are, click Create login and token, then Continue.
+2. Clean up: click User management, click Delete on your new username's row, and accept the
+   confirmation.
 
-Expected: the page says it is signed in as the new username, on team Demo, with Self access.
+Expected: after Continue the page says it is signed in as the new username, on team Demo, with
+Team access; after Delete, the sign-in screen shows.
 
 ## E1: Bad input
 

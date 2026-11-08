@@ -492,3 +492,17 @@ dialog.roast-dialog { width: min(40rem, 94vw); max-height: 88vh; overflow-y: aut
   .meter-fill, input[type="checkbox"], input[type="checkbox"]::before { transition: none; }
   tr.new .stamp:not(.ok) { animation: none; }
 }
+
+/* Delete on User management: quiet until hovered, then the alert pigment. */
+.roast-button.danger { color: var(--ochre-text); }
+.roast-button.danger:hover { border-color: var(--pigment-ochre); background: var(--ochre-wash); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Delete stays pinned to the table's right edge while the other columns scroll. */
+.users .user-delete {
+  position: sticky;
+  right: 0;
+  padding-left: .75rem;
+  background: var(--bg-slate-card);
+  box-shadow: -1px 0 0 var(--border-sandstone);
+}
+.users tbody tr:hover td.user-delete { background: var(--bg-slate-elevated); }

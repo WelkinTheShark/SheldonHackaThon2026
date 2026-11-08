@@ -495,7 +495,7 @@ async def reset(_: Viewer = Depends(access.require_manager)):
 class NewUser(BaseModel):
     name: str
     team: str = ""
-    access: str = "self"
+    access: str = config.DEFAULT_ACCESS
     password: str = ""
     budget_usd: float | None = None  # None means no budget of their own
 
@@ -669,6 +669,15 @@ async def update_user(
     if not developer:
         return _api_error("No such user.", 404)
     return _user(developer)
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: int, viewer: Viewer = Depends(access.require_viewer)):
+    # Open to anyone signed in, like the rest of User management for the demo. Deleting yourself
+    # ends your own sessions, so the page signs out.
+    if not store.delete_developer(user_id):
+        return _api_error("No such user.", 404)
+    return {"deleted": user_id, "signed_out": viewer.id == user_id}
 
 
 @app.post("/api/users/{user_id}/token")

@@ -45,7 +45,7 @@ def _print_token(name: str, token: str) -> None:
     print(json.dumps(claude_code_settings(token), indent=2))
 
 
-def add(name: str, team: str = "", level: str = "self") -> int:
+def add(name: str, team: str = "", level: str = config.DEFAULT_ACCESS) -> int:
     try:
         _, token = store.add_developer(name, team, level)
     except sqlite3.IntegrityError:
@@ -120,7 +120,7 @@ def main() -> int:
     new = commands.add_parser("add")
     new.add_argument("name")
     new.add_argument("--team", default="")
-    new.add_argument("--access", default="self", choices=access.LEVELS)
+    new.add_argument("--access", default=config.DEFAULT_ACCESS, choices=access.LEVELS)
     commands.add_parser("list")
     level = commands.add_parser("access")
     level.add_argument("name")

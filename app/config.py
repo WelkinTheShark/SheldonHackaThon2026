@@ -81,6 +81,8 @@ ROAST_MAX_CHARS = 20_000
 DEFAULT_BUDGET_USD = 1000.00  # the shared team budget; Reset demo returns it to this
 # Each new user's own budget. Change it per user on User management; clearing it means no limit.
 DEFAULT_USER_BUDGET_USD = 1000.00
+# Access a new user gets when none is chosen: on User management, the CLI and demo signup.
+DEFAULT_ACCESS = "team"
 DAYS_PER_MONTH = 30
 PROJECTION_CALLS_PER_DAY = 100
 
@@ -108,7 +110,7 @@ class Settings:
     )
     # Access given to logins made with the sign-in page's Demo button: self, team, all, or off.
     demo_access: str = field(
-        default_factory=lambda: os.environ.get("CAVEDAWG_DEMO_ACCESS", "self").strip().lower()
+        default_factory=lambda: os.environ.get("CAVEDAWG_DEMO_ACCESS", DEFAULT_ACCESS).strip().lower()
     )
 
 

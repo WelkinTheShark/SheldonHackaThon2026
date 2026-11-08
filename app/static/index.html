@@ -138,7 +138,7 @@
     <div class="ledger-scroll">
       <table>
         <thead>
-          <tr><th scope="col">Username</th><th scope="col">Team</th><th scope="col">Access</th><th scope="col">Budget</th><th scope="col">Model swaps</th><th scope="col">Password</th><th scope="col">Token</th></tr>
+          <tr><th scope="col">Username</th><th scope="col">Team</th><th scope="col">Access</th><th scope="col">Budget</th><th scope="col">Model swaps</th><th scope="col">Password</th><th scope="col">Token</th><th scope="col" class="user-delete"><span class="visually-hidden">Delete</span></th></tr>
         </thead>
         <tbody id="user-rows"></tbody>
       </table>
@@ -149,7 +149,7 @@
         <div><label for="new-name">Username</label><input id="new-name" type="text" required autocomplete="off"></div>
         <div><label for="new-team">Team</label><input id="new-team" type="text" autocomplete="off"></div>
         <div><label for="new-access">Access</label>
-          <select id="new-access"><option value="self">Self</option><option value="team">Team</option><option value="all">All</option></select></div>
+          <select id="new-access"><option value="self">Self</option><option value="team" selected>Team</option><option value="all">All</option></select></div>
         <div><label for="new-budget">Budget ($)</label><input id="new-budget" type="number" min="0" step="0.01" inputmode="decimal" placeholder="1000 (default)"></div>
         <div><label for="new-password">Password</label><input id="new-password" type="password" minlength="8" autocomplete="new-password" placeholder="Optional"></div>
       </div>

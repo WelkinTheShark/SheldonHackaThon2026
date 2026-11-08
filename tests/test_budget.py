@@ -74,6 +74,31 @@ def test_any_signed_in_user_can_edit_users_and_the_shared_budget(client):
     assert response.json()["budget_usd"] == 7
 
 
+def test_deleting_a_user_keeps_their_spend_as_unattributed(client):
+    created = client.post("/api/users", json={"name": "Temp", "team": "Core"}).json()
+    user_id, token = created["user"]["id"], created["token"]
+    run(client, token)
+    spent_before = client.get("/api/summary").json()["spent"]
+
+    response = client.delete(f"/api/users/{user_id}")
+    assert response.status_code == 200 and response.json()["signed_out"] is False
+    assert "Temp" not in {u["name"] for u in client.get("/api/users").json()}
+    # Their token no longer works, and their spend still counts, now as Unattributed.
+    assert client.get("/api/me", headers=as_user(token)).status_code == 401
+    assert client.get("/api/summary").json()["spent"] == spent_before
+    developers = {row["developer"] for row in client.get("/api/history").json()}
+    assert "Temp" not in developers and "Unattributed" in developers
+    assert client.delete(f"/api/users/{user_id}").status_code == 404
+
+
+def test_a_user_can_delete_themselves(client):
+    _, ada = store.add_developer("Ada", "Core", "self")
+    ada_id = store.developer_by_token(ada)["id"]
+    response = client.delete(f"/api/users/{ada_id}", headers=as_user(ada))
+    assert response.json() == {"deleted": ada_id, "signed_out": True}
+    assert client.get("/api/me", headers=as_user(ada)).status_code == 401
+
+
 def test_summary_reports_the_server_build(client):
     page = client.get("/")
     assert 'name="cavedawg-build"' in page.text

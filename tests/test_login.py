@@ -16,7 +16,7 @@ def test_demo_signup_creates_a_login_and_a_token(client):
     response = signup(client).json()
     assert response["user"]["name"] == "Dana"
     assert response["user"]["team"] == config.DEMO_TEAM
-    assert response["user"]["access"] == "self"
+    assert response["user"]["access"] == config.DEFAULT_ACCESS == "team"
     assert response["user"]["has_password"] is True
     assert response["viewer"]["name"] == "Dana"
     # The session signs in to the page, and the token works for Claude Code.
@@ -41,7 +41,7 @@ def test_signup_can_choose_team_and_access(client):
     blank = client.post(
         "/api/signup", json={"name": "Eve", "password": GOOD, "team": "", "access": None}
     ).json()["user"]
-    assert (blank["team"], blank["access"]) == ("Demo", "self")
+    assert (blank["team"], blank["access"]) == ("Demo", "team")
     bad = client.post("/api/signup", json={"name": "Fay", "password": GOOD, "access": "root"})
     assert bad.status_code == 400
 

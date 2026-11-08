@@ -315,7 +315,7 @@ def end_session(token: str) -> None:
         _db.commit()
 
 
-def add_developer(name: str, team: str = "", access: str = "self") -> tuple[dict, str]:
+def add_developer(name: str, team: str = "", access: str = config.DEFAULT_ACCESS) -> tuple[dict, str]:
     """Create a developer. The token is returned once and only its hash is kept."""
     token = _new_token()
     created = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -364,6 +364,20 @@ def update_developer(developer_id: int, **fields) -> dict | None:
             _db.commit()
         row = _db.execute("SELECT * FROM developers WHERE id = ?", (developer_id,)).fetchone()
     return dict(row) if row else None
+
+
+def delete_developer(developer_id: int) -> bool:
+    """Delete a user. Their calls and roasts stay, so spend and history still add up; they show
+    as Unattributed. Their sessions and dev time go, so any open page of theirs signs out."""
+    with _lock:
+        cursor = _db.execute("DELETE FROM developers WHERE id = ?", (developer_id,))
+        if cursor.rowcount:
+            _db.execute("UPDATE calls SET developer_id = NULL WHERE developer_id = ?", (developer_id,))
+            _db.execute("UPDATE roasts SET developer_id = NULL WHERE developer_id = ?", (developer_id,))
+            _db.execute("DELETE FROM sessions WHERE developer_id = ?", (developer_id,))
+            _db.execute("DELETE FROM dev_time WHERE developer_id = ?", (developer_id,))
+        _db.commit()
+    return cursor.rowcount > 0
 
 
 def rotate_token(developer_id: int) -> str | None:

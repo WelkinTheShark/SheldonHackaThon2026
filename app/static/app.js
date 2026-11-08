@@ -117,7 +117,7 @@ function setDemoMode(on) {
   $("demo-fields").hidden = !on;
   if (on) {
     $("signin-team").value = "";
-    $("signin-access").value = demoAccess ?? "self";
+    $("signin-access").value = demoAccess ?? "team";
   }
   $("signin-password").autocomplete = on ? "new-password" : "current-password";
   $("signin-submit").textContent = on ? "Create login and token" : "Sign in";
@@ -878,7 +878,7 @@ function showToken(issued, verb) {
 
 function usersMessage(text, bad = false) {
   const td = cell(text, bad ? "empty bad" : "empty");
-  td.colSpan = 7;
+  td.colSpan = 8;
   const row = document.createElement("tr");
   row.append(td);
   $("user-rows").replaceChildren(row);
@@ -959,11 +959,37 @@ function renderUsers(users) {
         }
       });
 
-      const tds = [name, team, level, budget, swaps, password, regenerate].map((control) => {
+      const remove = element("button", "roast-button danger", "Delete");
+      remove.type = "button";
+      remove.setAttribute("aria-label", `Delete ${user.name}`);
+      remove.addEventListener("click", async () => {
+        const self = user.id === viewer?.id;
+        const warning = self
+          ? `Delete your own login, ${user.name}? You'll be signed out. This can't be undone.`
+          : `Delete ${user.name}? Their token and password stop working at once. Their past calls stay, shown as Unattributed. This can't be undone.`;
+        if (!confirm(warning)) return;
+        remove.disabled = true;
+        try {
+          const result = await api(`/api/users/${user.id}`, { method: "DELETE" });
+          if (result.signed_out) {
+            signOut("Your login was deleted.");
+            return;
+          }
+          setStatus($("users-status"), `Deleted ${user.name}.`);
+          await loadUsers(true);
+        } catch (error) {
+          remove.disabled = false;
+          if (!(error instanceof SignedOut)) setStatus($("users-status"), error.message, true);
+        }
+      });
+
+      const tds = [name, team, level, budget, swaps, password, regenerate, remove].map((control) => {
         const td = cell("");
         td.append(control);
         return td;
       });
+      // Delete is the last column, pinned to the right edge so a narrow window can't scroll it away.
+      tds[tds.length - 1].className = "user-delete";
       row.append(...tds);
       return row;
     }),

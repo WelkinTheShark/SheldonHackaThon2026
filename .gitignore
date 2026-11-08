@@ -8,3 +8,7 @@ data/
 
 # Seldon test file holds the wren demo password
 seldon.yml
+
+# Wren run reports and the temporary per-run seldon.yml copies (they hold the password)
+wren/reports/
+wren/.runs/
