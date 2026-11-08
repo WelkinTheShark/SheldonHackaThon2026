@@ -321,9 +321,9 @@ def add_developer(name: str, team: str = "", access: str = "self") -> tuple[dict
     created = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with _lock:
         _db.execute(
-            "INSERT INTO developers (name, team, access, token_hash, created) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (name, team, access, _hash(token), created),
+            "INSERT INTO developers (name, team, access, token_hash, created, budget_usd) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (name, team, access, _hash(token), created, config.DEFAULT_USER_BUDGET_USD),
         )
         _db.commit()
         row = _db.execute("SELECT * FROM developers WHERE name = ?", (name,)).fetchone()

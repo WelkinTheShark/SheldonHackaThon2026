@@ -60,7 +60,8 @@ function money(value, places = 4) {
   const amount = Number(value || 0);
   // Tiny calls would otherwise display as $0.0000.
   if (amount > 0 && amount < 0.0001) return `$${amount.toFixed(6)}`;
-  return `$${amount.toFixed(places)}`;
+  // Thousands separators, so a $1,000 budget can't be misread as $1.
+  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: places, maximumFractionDigits: places })}`;
 }
 
 async function api(path, options = {}) {
@@ -522,18 +523,6 @@ $("board-toggle").addEventListener("click", () => {
   if (open) renderBoardTable();
 });
 
-function renderDevelopers(developers) {
-  const wanted = [
-    ["", "Unattributed"],
-    ...developers.map(({ id, name }) => [String(id), name]),
-  ];
-  const known = [...$("developer").options].map((o) => `${o.value}:${o.text}`).join();
-  if (known === wanted.map(([id, name]) => `${id}:${name}`).join()) return;
-  const selected = $("developer").options.length ? $("developer").value : String(viewer?.id ?? "");
-  $("developer").replaceChildren(...wanted.map(([id, name]) => new Option(name, id)));
-  $("developer").value = selected;
-}
-
 function renderLevel(value) {
   const current = levels.find(({ level }) => level === value);
   if (!current) return;
@@ -576,7 +565,6 @@ function renderSummary(summary) {
   $("meter-bar").setAttribute("aria-valuenow", Math.round(percent));
   document.querySelector(".meter").classList.toggle("over", percent >= 100);
   $("use-recommended").checked = summary.use_recommended;
-  renderDevelopers(summary.developers);
   if (summary.viewer.access !== viewer?.access || summary.viewer.team !== viewer?.team) {
     applyViewer(summary.viewer);
   }
@@ -731,11 +719,8 @@ $("roast-dialog").addEventListener("click", (event) => {
 function runPrompt(button, model, keep_model) {
   $("reply").hidden = true;
   withBusy(button, $("form-status"), "Running prompt", async () => {
+    // Calls always count for whoever is signed in; the server takes that from the session.
     const payload = { model, prompt: $("prompt").value, keep_model };
-    // Only all-access users choose who a call is for. Everyone else sends as themselves.
-    if (viewer?.can_manage) {
-      payload.developer_id = $("developer").value ? Number($("developer").value) : null;
-    }
     const result = await api("/api/playground", { method: "POST", body: JSON.stringify(payload) });
     const failed = ["Blocked by budget", "Demo limit reached", "Error"].includes(result.status);
     setStatus($("form-status"), failed ? result.message : `Call finished: ${result.status}`, failed);
@@ -797,28 +782,10 @@ $("level").addEventListener("change", async (event) => {
   }
 });
 
-$("simulate").addEventListener("click", () => {
-  withBusy($("simulate"), $("form-status"), "Running the retry loop", async () => {
-    const { statuses } = await api("/api/simulate-loop", { method: "POST" });
-    const last = statuses[statuses.length - 1];
-    setStatus($("form-status"), `Retry loop finished: ${last}`, last === "Error");
-  });
-});
 
-$("reset").addEventListener("click", () => {
-  withBusy($("reset"), $("form-status"), "Resetting", async () => {
-    await api("/api/reset", { method: "POST" });
-    newestSeen = 0;
-    $("prompt").value = "";
-    $("reply").hidden = true;
-    clearRecommendation();
-    roastRuns = [];
-    setStatus($("form-status"), "Demo reset.");
-  });
-});
 
 function openBudgetDialog() {
-  $("budget-input").value = $("budget").textContent.replace("$", "");
+  $("budget-input").value = $("budget").textContent.replace(/[$,]/g, "");
   setStatus($("budget-error"), "");
   $("budget-dialog").showModal();
 }

@@ -78,7 +78,9 @@ LOOP_LIMIT = 3
 PLAYGROUND_MAX_TOKENS = 2_048
 PROMPT_MAX_CHARS = 8_000
 ROAST_MAX_CHARS = 20_000
-DEFAULT_BUDGET_USD = 1.00
+DEFAULT_BUDGET_USD = 1000.00  # the shared team budget; Reset demo returns it to this
+# Each new user's own budget. Change it per user on User management; clearing it means no limit.
+DEFAULT_USER_BUDGET_USD = 1000.00
 DAYS_PER_MONTH = 30
 PROJECTION_CALLS_PER_DAY = 100
 

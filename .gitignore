@@ -5,3 +5,6 @@ __pycache__/
 data/
 *.docx
 /.claude*
+
+# Seldon test file holds the wren demo password
+seldon.yml

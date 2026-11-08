@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CaveDawg: see and stop AI waste</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="/static/brand/favicon.png">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<div class="cave-perimeter-frame" aria-hidden="true"></div>
+
 <header class="masthead">
   <div class="brand">
-    <h1>CaveDawg</h1>
+    <h1 class="brand-lockup"><img class="brand-dog" src="/static/brand/logo-mark.png" width="85" height="60" alt=""><img class="brand-word" src="/static/brand/logo-word.png" width="119" height="28" alt="CaveDawg"></h1>
     <p>See what your AI calls cost, and stop the waste before you pay for it.</p>
   </div>
   <div class="masthead-side">
@@ -20,9 +20,7 @@
       <p id="who" class="who"></p>
       <button type="button" id="simulated-on" class="quiet" hidden title="Canned replies and no token cost. Turn it off for real Claude Code work.">Simulate responses</button>
       <a href="#users" id="users-link" class="quiet" hidden>User management</a>
-      <button type="button" id="sign-out" class="quiet" hidden>Sign out</button>
-      <button type="button" id="reset" class="quiet manage-only">Reset demo</button>
-    </div>
+      <button type="button" id="sign-out" class="quiet" hidden>Sign out</button>    </div>
     <section class="meter" aria-label="Spending">
       <p class="spent"><span id="spent">$0.0000</span> spent of <span id="budget">$1.0000</span> budget</p>
       <div class="meter-track" role="progressbar" aria-label="Budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="meter-bar">
@@ -79,12 +77,6 @@
       </div>
       <p id="form-status" class="form-status" role="status"></p>
       <p id="reply" class="reply" hidden></p>
-
-      <div class="manage-only">
-        <label for="developer">Developer</label>
-        <select id="developer"></select>
-        <button type="button" id="simulate" class="secondary">Simulate agent retry loop</button>
-      </div>
     </form>
 
     <section class="ledger" aria-labelledby="ledger-title">
@@ -158,7 +150,7 @@
         <div><label for="new-team">Team</label><input id="new-team" type="text" autocomplete="off"></div>
         <div><label for="new-access">Access</label>
           <select id="new-access"><option value="self">Self</option><option value="team">Team</option><option value="all">All</option></select></div>
-        <div><label for="new-budget">Budget ($)</label><input id="new-budget" type="number" min="0" step="0.01" inputmode="decimal" placeholder="No limit"></div>
+        <div><label for="new-budget">Budget ($)</label><input id="new-budget" type="number" min="0" step="0.01" inputmode="decimal" placeholder="1000 (default)"></div>
         <div><label for="new-password">Password</label><input id="new-password" type="password" minlength="8" autocomplete="new-password" placeholder="Optional"></div>
       </div>
       <button type="submit" id="add-user">Create user and token</button>
@@ -202,6 +194,7 @@
 
 <dialog id="signin-dialog" class="signin">
   <form id="signin-form" method="dialog">
+    <img class="signin-mark" src="/static/brand/logo-lockup.png" width="240" height="214" alt="">
     <h2 id="signin-title">Sign in to CaveDawg</h2>
     <p id="signin-hint" class="hint">CaveDawg shows what your team's AI calls cost and stops the waste.</p>
     <label for="signin-name">Username</label>

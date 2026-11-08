@@ -25,7 +25,7 @@ def test_users_list_shows_budget_and_spend(client):
     assert (created["team"], created["access"], created["budget_usd"]) == ("Core", "team", 0.5)
     _, plain = store.add_developer("Ada", "Core", "self")
     row = user_row(client, "Ada")
-    assert row["budget_usd"] is None and row["spent_usd"] == 0
+    assert row["budget_usd"] == config.DEFAULT_USER_BUDGET_USD and row["spent_usd"] == 0
     run(client, plain)
     assert user_row(client, "Ada")["spent_usd"] > 0
 

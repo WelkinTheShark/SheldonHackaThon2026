@@ -90,7 +90,9 @@ model only (`roasted` is false) until someone clicks Roast, and `POST /api/roast
 fills it in place with Haiku. The page shows no scores. The playground sends Opus unless Use recommended
 model swaps it. After Roast this prompt, that button becomes Run on recommended model (sent with
 `keep_model`), and a model menu appears beside Run this prompt. `/api/playground` accepts any model
-in `config.MODEL_LABELS`.
+in `config.MODEL_LABELS`. The page has no Developer menu and no retry-loop button: playground calls
+count for whoever is signed in. `developer_id` on `/api/playground` and `/api/simulate-loop` remain
+as APIs (tests use them), but the page no longer sends or calls them.
 
 **Store.** SQLite behind one lock. New `calls` columns go in `CALL_COLUMNS` so `_migrate` adds them
 to existing databases. `store.reset` (Reset demo) clears calls, roasts, dev time, budget, the swap
