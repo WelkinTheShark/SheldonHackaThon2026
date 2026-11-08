@@ -54,3 +54,17 @@ def test_snippet_is_short_and_reset_clears(client, developer):
     assert len(live(client)[0]["prompt"]) <= config.SNIPPET_CHARS
     client.post("/api/reset")
     assert client.get("/api/roasts").json() == []
+
+
+def test_roast_button_fills_a_live_roast_with_haiku(client, anthropic, developer):
+    auth, _ = developer
+    call(client, first_body("Please write a commit message for: fix typo in README"), auth, **hints())
+    row = live(client)[0]
+    assert row["roasted"] is False
+    anthropic.reply_text = '{"issues": ["Please adds nothing."], "fix": "Drop please."}'
+    roasted = client.post(f"/api/roasts/{row['id']}/roast").json()
+    assert roasted["id"] == row["id"] and roasted["roasted"] is True
+    assert roasted["issues"] == ["Please adds nothing."]
+    assert roasted["receipt"]["model"] == "Haiku 5.5"
+    assert anthropic.models[-1] == config.HAIKU
+    assert live(client)[0]["fix"] == "Drop please."

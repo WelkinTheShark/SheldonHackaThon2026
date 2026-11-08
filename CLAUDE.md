@@ -62,10 +62,10 @@ the server's `ANTHROPIC_API_KEY`, and only `anthropic-*` headers pass through.
 `Depends(access.require_viewer)` or `require_manager`. The page sends `x-cavedawg-token`; Claude
 Code's roast script sends `x-api-key`. A developer row carries `team` and `access` (`self`, `team`,
 `all`). `access.scope(viewer)` returns the visible developer IDs, or None for everything, and
-`team.history` / `team.leaderboard` / `/api/roasts` filter by it. Only `all` can change settings,
-Reset demo, the retry-loop demo and users. The gateway token signs in as Admin with all access.
+`team.history` / `team.leaderboard` / `/api/roasts` filter by it. Only `all` can change settings (except
+the Simulate responses switch (a red banner with Turn off when on), which anyone signed in may flip, since it blocks real work), Reset demo and the retry-loop demo. For the demo, the `/api/users` routes take `require_viewer`, so anyone signed in can create and edit users (including granting `all`) from the User management view (`#users`). The gateway token signs in as Admin with all access.
 Password login (`/api/login`, scrypt hashes in `developers.password_hash`) and the Demo signup
-(`/api/signup`, access from `CAVEDAWG_DEMO_ACCESS`) issue page sessions (`sessions` table, `cs_`
+(`/api/signup`, where the person picks team and access; blank means team Demo and access from `CAVEDAWG_DEMO_ACCESS`, which also turns Demo off when invalid) issue page sessions (`sessions` table, `cs_`
 prefix). `access.viewer_for` accepts a developer token or a session. The proxy's `_identify`
 accepts tokens only, so a session can't spend through `/v1/messages`. Setting a password ends that
 user's sessions.
@@ -79,13 +79,18 @@ count toward the budget but not the lifetime hard cap, and Jev is skipped. `test
 reuses the same canned replies as a standalone server.
 
 **Views.** `app/team.py` groups rows by prompt ID into delivery history (the worst status wins via
-`STATUS_ORDER`) and builds the leaderboard. Roast (`app/roast.py`) finds issues with rules and only
-asks Claude for the suggested fix. Roasts live in the `roasts` table and are shared. Each one stores
+`STATUS_ORDER`) and builds the leaderboard. Roast (`app/roast.py`) asks Haiku for the issues and fix
+as JSON, and falls back to the rules' issues when the reply isn't JSON or the call fails. Roasts live in the `roasts` table and are shared. Each one stores
 `prompt_hash` (`rules.prompt_hash` of the stripped words), and a history row shows the newest roast
 whose hash matches its call's `prompt_hash`, so a roast follows a prompt that was sent unchanged.
 Calls keep the person's words in `prompt_text` (never for background Claude Code classes), which
 `POST /api/calls/{id}/roast` uses. Each new Claude Code prompt is also scored with the rules in
-`pipeline._live_roast` (source `live`, no model call).
+`pipeline._live_roast` (source `live`, no model call). The page shows such a roast's recommended
+model only (`roasted` is false) until someone clicks Roast, and `POST /api/roasts/{id}/roast` then
+fills it in place with Haiku. The page shows no scores. The playground sends Opus unless Use recommended
+model swaps it. After Roast this prompt, that button becomes Run on recommended model (sent with
+`keep_model`), and a model menu appears beside Run this prompt. `/api/playground` accepts any model
+in `config.MODEL_LABELS`.
 
 **Store.** SQLite behind one lock. New `calls` columns go in `CALL_COLUMNS` so `_migrate` adds them
 to existing databases. `store.reset` (Reset demo) clears calls, roasts, dev time, budget, the swap
@@ -106,11 +111,12 @@ and gives each test its own temp database. The useful fixtures are `client`, `an
 deployed URL. W1 and W2 are required for prizes and must run against the final build with real
 Claude calls and Simulated responses off. Expected results check status labels and amounts, never
 Claude's wording. Each Wren run past the first 10 costs $3, so change UI labels those tests name
-(Reset demo, Send call, Use recommended model, Edit budget, statuses) only with the use cases updated
+(Reset demo, Run this prompt, Run on recommended model, Use recommended model, Edit budget, User management, statuses) only with the use cases updated
 to match.
 
 ## Known limits to keep in mind
 
-Login has no rate limit and no audit log, and the Demo button is open to anyone with the URL. Spend, budget and settings are global, not
+Login has no rate limit and no audit log, and the Demo button is open to anyone with the URL. Anyone signed in (including a Demo login) can
+manage users and give themselves all access. Spend, budget and settings are global, not
 per team. The person's prompt words are stored so calls can be roasted later. Saved amounts are
 estimates. Wren tests now need a sign-in step with a demo all-access token.

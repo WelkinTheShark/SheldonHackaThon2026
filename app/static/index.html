@@ -15,152 +15,177 @@
     <h1>CaveDawg</h1>
     <p>See what your AI calls cost, and stop the waste before you pay for it.</p>
   </div>
-  <div class="session">
-    <p id="who" class="who"></p>
-    <button type="button" id="sign-out" class="quiet" hidden>Sign out</button>
-    <button type="button" id="reset" class="quiet manage-only">Reset demo</button>
+  <div class="masthead-side">
+    <div class="session">
+      <p id="who" class="who"></p>
+      <button type="button" id="simulated-on" class="quiet" hidden title="Canned replies and no token cost. Turn it off for real Claude Code work.">Simulate responses</button>
+      <a href="#users" id="users-link" class="quiet" hidden>User management</a>
+      <button type="button" id="sign-out" class="quiet" hidden>Sign out</button>
+      <button type="button" id="reset" class="quiet manage-only">Reset demo</button>
+    </div>
+    <section class="meter" aria-label="Spending">
+      <p class="spent"><span id="spent">$0.0000</span> spent of <span id="budget">$1.0000</span> budget</p>
+      <div class="meter-track" role="progressbar" aria-label="Budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="meter-bar">
+        <div class="meter-fill" id="meter-fill"></div>
+      </div>
+      <dl class="tally">
+        <div><dt>Saved</dt><dd id="saved">$0.0000</dd></div>
+        <div><dt>Calls</dt><dd id="count">0</dd></div>
+        <div><dt>Blocked</dt><dd id="blocked">0</dd></div>
+      </dl>
+      <button type="button" id="edit-budget" class="quiet">Edit budget</button>
+    </section>
   </div>
 </header>
 
-<p id="simulated-banner" class="simulated-banner" role="status" hidden>Simulated responses are on. Nothing is sent to Anthropic, and amounts shown are estimates, not real spend.</p>
+<div id="stale-banner" class="stale-banner" role="alert" hidden>
+  <p id="stale-text"></p>
+  <button type="button" id="stale-reload" class="quiet">Reload page</button>
+</div>
 
-<section class="meter" aria-label="Spending">
-  <div class="meter-figures">
-    <p class="spent"><span id="spent">$0.0000</span> spent of <span id="budget">$1.0000</span> budget</p>
-    <button type="button" id="edit-budget" class="quiet manage-only">Edit budget</button>
+<div id="simulated-banner" class="simulated-banner" role="status" hidden>
+  <div>
+    <p class="simulated-title">Demo only: Simulate responses</p>
+    <p class="simulated-note">Nothing is sent to Anthropic. Amounts shown are estimates, not real spend.</p>
   </div>
-  <div class="meter-track" role="progressbar" aria-label="Budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="meter-bar">
-    <div class="meter-fill" id="meter-fill"></div>
-  </div>
-  <dl class="tally">
-    <div><dt>Saved</dt><dd id="saved">$0.0000</dd></div>
-    <div><dt>Calls</dt><dd id="count">0</dd></div>
-    <div><dt>Blocked</dt><dd id="blocked">0</dd></div>
-  </dl>
-</section>
+  <button type="button" id="simulated-off" class="simulated-off">Turn off</button>
+</div>
 
-<main>
+
+<main id="dashboard">
   <div class="room">
     <form id="call-form" class="composer">
-      <h2>Try a call</h2>
-      <div class="manage-only">
-        <label class="toggle simulated-toggle">
-          <input type="checkbox" id="simulated">
-          <span>Simulated responses</span>
+      <div class="routing">
+        <div class="routing-level">
+          <label for="level">Routing level</label>
+          <input type="range" id="level" min="1" max="4" step="1" value="2">
+          <div id="level-ticks" class="level-ticks" aria-hidden="true"></div>
+        </div>
+        <label class="toggle routing-toggle">
+          <input type="checkbox" id="use-recommended">
+          <span>Use recommended model</span>
         </label>
-        <p class="hint">On: canned replies and no token cost. Off: real Claude calls that spend tokens.</p>
-        <label for="level">Routing level</label>
-        <input type="range" id="level" min="1" max="4" step="1" value="2">
-        <div id="level-ticks" class="level-ticks" aria-hidden="true"></div>
-        <p id="level-note" class="hint"></p>
-        <label for="developer">Developer</label>
-        <select id="developer"></select>
       </div>
-      <label for="model">Model</label>
-      <select id="model"></select>
       <label for="prompt">Prompt</label>
-      <textarea id="prompt" rows="5" maxlength="20000" placeholder="Ask Claude something, paste a prompt or tool definition to roast, or choose an example below"></textarea>
-      <div class="examples">
-        <span id="examples-label">Examples:</span>
-        <button type="button" class="chip" id="simple-task" aria-describedby="examples-label">Simple task</button>
-        <button type="button" class="chip" id="real-design" aria-describedby="examples-label">Real design</button>
+      <textarea id="prompt" rows="5" maxlength="20000" placeholder="Ask Claude something, or paste a prompt or tool definition to roast"></textarea>
+      <div class="roast-row">
+        <button type="button" id="roast-send" class="secondary">Roast this prompt</button>
+        <button type="button" id="roast-info" class="info" aria-expanded="false" aria-controls="roast-help" aria-label="What does Roast do?" title="Haiku 5.5 reads it for wasted tokens without sending the call. Send it unchanged and the roast stays with the call for everyone who can see it.">?</button>
       </div>
-      <button type="button" id="roast-send" class="secondary">Roast this prompt</button>
-      <p class="hint">Scores it for wasted tokens without running it on the model above. Send it unchanged and the roast stays with the call for everyone who can see it.</p>
-      <p id="recommend" class="recommend" role="status" hidden></p>
-      <button type="submit" id="send">Send call</button>
-      <button type="button" id="use-anyway" class="secondary" hidden></button>
+      <p id="roast-help" class="hint" hidden>Haiku 5.5 reads it for wasted tokens without sending the call. Send it unchanged and the roast stays with the call for everyone who can see it.</p>
+      <div class="run-row">
+        <button type="submit" id="send">Run this prompt</button>
+        <select id="run-model" aria-label="Model for Run this prompt" hidden></select>
+      </div>
       <p id="form-status" class="form-status" role="status"></p>
       <p id="reply" class="reply" hidden></p>
 
       <div class="manage-only">
-        <label class="toggle">
-          <input type="checkbox" id="use-recommended">
-          <span>Use recommended model</span>
-        </label>
-        <p class="hint">Runs each call on its ideal model, which can cost more at Thorough and Full power. Use a model anyway to override it once.</p>
-
+        <label for="developer">Developer</label>
+        <select id="developer"></select>
         <button type="button" id="simulate" class="secondary">Simulate agent retry loop</button>
-        <p class="hint">Sends real Haiku calls that repeat one tool error until CaveDawg stops them.</p>
       </div>
     </form>
 
     <section class="ledger" aria-labelledby="ledger-title">
-      <div class="ledger-grid">
-        <div class="ledger-calls">
-          <h2 id="ledger-title">Live calls</h2>
+      <section id="board" class="board" aria-labelledby="board-title">
+        <div class="board-head">
+          <h2 id="board-title">Developer leaderboard</h2>
+          <label class="board-sort">Rank by
+            <select id="board-sort">
+              <option value="efficiency">Efficiency</option>
+              <option value="cost">Cost</option>
+              <option value="prompts">Prompts</option>
+            </select>
+          </label>
+          <button type="button" id="board-toggle" class="quiet" aria-expanded="false" aria-controls="board-full">Expand</button>
+        </div>
+        <p id="board-summary" class="board-summary"></p>
+        <ol id="board-top" class="board-top"></ol>
+        <div id="board-full" class="board-full" hidden>
           <div class="ledger-scroll">
             <table>
               <thead>
-                <tr><th scope="col">Time</th><th scope="col">Developer</th><th scope="col">Prompt</th><th scope="col">Ideal model</th><th scope="col">Used model</th><th scope="col" class="num">Tokens</th><th scope="col" class="num">Cost</th><th scope="col">Status</th><th scope="col">Roast</th></tr>
+                <tr id="board-head-row"></tr>
+                <tr id="board-filter-row" class="board-filters"></tr>
+              </thead>
+              <tbody id="board-rows"></tbody>
+            </table>
+          </div>
+          <p id="board-nomatch" class="empty" hidden>No developers match these filters.</p>
+        </div>
+        <p id="board-empty" class="empty">No prompts yet.</p>
+      </section>
+
+      <div class="ledger-calls">
+          <h2 id="ledger-title">Live calls</h2>
+          <div class="ledger-scroll calls-scroll">
+            <table>
+              <thead>
+                <tr><th scope="col">Time</th><th scope="col">Developer</th><th scope="col">Used model</th><th scope="col">Recommended model</th><th scope="col">Results</th><th scope="col">Roast</th></tr>
               </thead>
               <tbody id="calls"></tbody>
             </table>
           </div>
           <p id="empty" class="empty">No calls yet. Send one on the left.</p>
-          <aside id="why" class="why" hidden aria-live="polite">
-            <h3>Why this was flagged</h3>
-            <p id="why-reason"></p>
-            <p id="why-math"></p>
-          </aside>
-        </div>
-
-        <section id="roasts" class="roasts" aria-labelledby="roasts-title">
-          <h2 id="roasts-title">Roast results <span id="roast-count" class="roast-count"></span></h2>
-          <p id="roasts-empty" class="empty">No roasts yet. Click Roast on a call, or Roast this prompt.</p>
-          <div id="roast-runs" class="roast-runs"></div>
-        </section>
       </div>
 
-      <section id="board" class="board" aria-labelledby="board-title" hidden>
-        <h2 id="board-title">Developer leaderboard</h2>
-        <div class="ledger-scroll">
-          <table>
-            <thead>
-              <tr><th scope="col">Rank</th><th scope="col">Developer</th><th scope="col" class="num">Prompts</th><th scope="col" class="num">Tokens</th><th scope="col" class="num">Cost</th><th scope="col" class="num">Dev time</th><th scope="col" class="num">Overuse</th><th scope="col" class="num">Overspend</th></tr>
-            </thead>
-            <tbody id="board-rows"></tbody>
-          </table>
-        </div>
-        <p id="board-note" class="hint"></p>
-      </section>
-
-      <section id="users" class="users manage-only" aria-labelledby="users-title">
-        <h2 id="users-title">Users</h2>
-        <p class="hint">Self sees only their own calls. Team sees everyone on the same team. All sees everything and can manage users and settings. Changes save as you make them.</p>
-        <div class="ledger-scroll">
-          <table>
-            <thead>
-              <tr><th scope="col">Username</th><th scope="col">Team</th><th scope="col">Access</th><th scope="col">Model swaps</th><th scope="col">Password</th><th scope="col">Token</th></tr>
-            </thead>
-            <tbody id="user-rows"></tbody>
-          </table>
-        </div>
-        <form id="user-form" class="user-form">
-          <h3>Add a user</h3>
-          <div class="user-fields">
-            <div><label for="new-name">Username</label><input id="new-name" type="text" required autocomplete="off"></div>
-            <div><label for="new-team">Team</label><input id="new-team" type="text" autocomplete="off"></div>
-            <div><label for="new-access">Access</label>
-              <select id="new-access"><option value="self">Self</option><option value="team">Team</option><option value="all">All</option></select></div>
-            <div><label for="new-password">Password</label><input id="new-password" type="password" minlength="8" autocomplete="new-password" placeholder="Optional"></div>
-          </div>
-          <button type="submit" id="add-user">Create user and token</button>
-          <p id="users-status" class="form-status" role="status"></p>
-        </form>
-        <div id="token-box" class="token-box" hidden>
-          <h3 id="token-title"></h3>
-          <p class="hint">Shown only once. It signs in to this page, and the settings below route Claude Code through CaveDawg.</p>
-          <label for="token-value">Token</label>
-          <input id="token-value" type="text" readonly>
-          <label for="token-settings">Claude Code settings</label>
-          <textarea id="token-settings" rows="8" readonly></textarea>
-          <button type="button" id="token-copy" class="secondary">Copy token</button>
-        </div>
-      </section>
     </section>
   </div>
 </main>
+
+<main id="users-view" class="users-view" hidden>
+  <section id="users" class="users" aria-labelledby="users-title">
+    <a href="#" class="quiet back-link">Back to dashboard</a>
+    <h2 id="users-title">User management</h2>
+    <p class="hint">Self sees only their own calls. Team sees everyone on the same team. All sees everything. Anyone signed in can manage users here. Changes save as you make them. A blank budget means no limit of their own.</p>
+    <div class="team-budget">
+      <p><strong>Team budget:</strong> <span id="team-spent">$0.0000</span> spent of <span id="team-budget">$1.0000</span></p>
+      <button type="button" id="team-edit-budget" class="quiet">Edit budget</button>
+    </div>
+    <div class="ledger-scroll">
+      <table>
+        <thead>
+          <tr><th scope="col">Username</th><th scope="col">Team</th><th scope="col">Access</th><th scope="col">Budget</th><th scope="col">Model swaps</th><th scope="col">Password</th><th scope="col">Token</th></tr>
+        </thead>
+        <tbody id="user-rows"></tbody>
+      </table>
+    </div>
+    <form id="user-form" class="user-form">
+      <h3>Add a user</h3>
+      <div class="user-fields">
+        <div><label for="new-name">Username</label><input id="new-name" type="text" required autocomplete="off"></div>
+        <div><label for="new-team">Team</label><input id="new-team" type="text" autocomplete="off"></div>
+        <div><label for="new-access">Access</label>
+          <select id="new-access"><option value="self">Self</option><option value="team">Team</option><option value="all">All</option></select></div>
+        <div><label for="new-budget">Budget ($)</label><input id="new-budget" type="number" min="0" step="0.01" inputmode="decimal" placeholder="No limit"></div>
+        <div><label for="new-password">Password</label><input id="new-password" type="password" minlength="8" autocomplete="new-password" placeholder="Optional"></div>
+      </div>
+      <button type="submit" id="add-user">Create user and token</button>
+      <p id="users-status" class="form-status" role="status"></p>
+    </form>
+    <div id="token-box" class="token-box" hidden>
+      <h3 id="token-title"></h3>
+      <p class="hint">Shown only once. It signs in to this page, and the settings below route Claude Code through CaveDawg.</p>
+      <label for="token-value">Token</label>
+      <input id="token-value" type="text" readonly>
+      <label for="token-settings">Claude Code settings</label>
+      <textarea id="token-settings" rows="8" readonly></textarea>
+      <button type="button" id="token-copy" class="secondary">Copy token</button>
+    </div>
+  </section>
+</main>
+
+<dialog id="roast-dialog" class="roast-dialog" aria-labelledby="roast-title">
+  <div class="roast-head">
+    <h2 id="roast-title">Roast</h2>
+    <button type="button" id="roast-close" class="quiet">Close</button>
+  </div>
+  <p id="roast-meta" class="hint"></p>
+  <p id="roast-prompt" class="roast-prompt"></p>
+  <p id="roast-status" class="form-status" role="status"></p>
+  <div id="roast-body" class="verdict"></div>
+</dialog>
 
 <dialog id="budget-dialog">
   <form id="budget-form" method="dialog">
@@ -183,6 +208,11 @@
     <input id="signin-name" type="text" required autocomplete="username">
     <label for="signin-password">Password</label>
     <input id="signin-password" type="password" required autocomplete="current-password">
+    <div id="demo-fields" class="demo-fields" hidden>
+      <div><label for="signin-team">Team</label><input id="signin-team" type="text" autocomplete="off" placeholder="Demo"></div>
+      <div><label for="signin-access">Access</label>
+        <select id="signin-access"><option value="self">Self</option><option value="team">Team</option><option value="all">All</option></select></div>
+    </div>
     <p id="signin-error" class="form-status" role="alert"></p>
     <div class="dialog-actions">
       <button type="button" id="demo-toggle" class="quiet" hidden>Demo, create new token</button>

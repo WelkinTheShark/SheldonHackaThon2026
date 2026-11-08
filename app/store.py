@@ -84,6 +84,8 @@ DEVELOPER_COLUMNS = {
     "team": "TEXT NOT NULL DEFAULT ''",
     "access": "TEXT NOT NULL DEFAULT 'self'",
     "password_hash": "TEXT NOT NULL DEFAULT ''",
+    # This developer's own spending limit in USD. NULL means no limit of their own.
+    "budget_usd": "REAL",
 }
 # scrypt settings for page passwords. Tokens stay on SHA-256 because they are long and random.
 SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
@@ -216,6 +218,16 @@ def totals() -> dict:
     return dict(row)
 
 
+def developer_spent() -> dict[int, float]:
+    """Spend per developer, counted like totals(): simulated rows count, Reset demo clears it."""
+    with _lock:
+        rows = _db.execute(
+            "SELECT developer_id, COALESCE(SUM(cost_usd), 0) AS spent FROM calls "
+            "WHERE developer_id IS NOT NULL GROUP BY developer_id"
+        ).fetchall()
+    return {row["developer_id"]: row["spent"] for row in rows}
+
+
 def reset() -> None:
     """Clear the demo. The lifetime spend total stays, so reset can't bypass the hard cap."""
     with _lock:
@@ -339,8 +351,9 @@ def list_developers() -> list[dict]:
 
 
 def update_developer(developer_id: int, **fields) -> dict | None:
-    """Change name, team, access or swaps_allowed. Unknown keys are ignored."""
-    fields = {k: v for k, v in fields.items() if k in {"name", "team", "access", "swaps_allowed"}}
+    """Change name, team, access, swaps_allowed or budget_usd. Unknown keys are ignored."""
+    allowed = {"name", "team", "access", "swaps_allowed", "budget_usd"}
+    fields = {k: v for k, v in fields.items() if k in allowed}
     with _lock:
         if fields:
             assignments = ", ".join(f"{key} = ?" for key in fields)
@@ -386,6 +399,22 @@ def add_roast(issues: list[str], **row) -> dict:
         _db.commit()
         saved = _db.execute("SELECT * FROM roasts WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return _roast(saved)
+
+
+def update_roast(roast_id: int, issues: list[str], **row) -> dict:
+    row["issues"] = json.dumps(issues)
+    assignments = ", ".join(f"{column} = ?" for column in row)
+    with _lock:
+        _db.execute(f"UPDATE roasts SET {assignments} WHERE id = ?", (*row.values(), roast_id))
+        _db.commit()
+        saved = _db.execute("SELECT * FROM roasts WHERE id = ?", (roast_id,)).fetchone()
+    return _roast(saved)
+
+
+def get_roast(roast_id: int) -> dict | None:
+    with _lock:
+        row = _db.execute("SELECT * FROM roasts WHERE id = ?", (roast_id,)).fetchone()
+    return _roast(row) if row else None
 
 
 def list_roasts(limit: int = 200) -> list[dict]:

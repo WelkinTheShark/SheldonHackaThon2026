@@ -38,10 +38,10 @@ For Wren, run `.\serve.ps1` instead. It reads `.env` (copy `.env.example`), star
 Cloudflare quick tunnel, then prints the public URL to paste into Wren. `.\serve.ps1 -Stub` runs
 with the fake upstream for a dry run.
 
-To test with no token cost, turn on Simulated responses at the top of the page. Calls get canned
+To test with no token cost, click Simulate responses at the top of the page. Calls get canned
 replies, nothing reaches Anthropic or Jev, and each row is marked Simulated. Amounts are estimates
 that count toward the budget but never the hard cap. Reset demo clears them and leaves the switch as
-it is. The switch covers proxy traffic too, so Claude Code can't do real work while it's on. Never
+it is. The switch covers proxy traffic too, so Claude Code can't do real work while the red "Demo only: Simulate responses" banner shows (its Turn off button ends it). Never
 use simulated runs for Wren evidence.
 
 To run the same canned replies as a separate server, start the stub in a second terminal:
@@ -96,7 +96,7 @@ bills to CaveDawg's API key.
 | Override | Add `#keep` to a prompt, or run `python -m app.devs swaps "Name" off`. |
 | Rejected swap | If Anthropic refuses the swapped model, the original request is resent once and marked Swap failed. |
 | Dev time | Claude Code telemetry, shown as Measured. Without it, an Estimate from gaps between calls. |
-| Live roast | Each prompt is scored by the Roast rules as it arrives and shows in Roast results and on its Live calls row, with no extra Claude call. |
+| Live roast | Each prompt gets a recommended model as it arrives, shown on its Live calls row, with no extra Claude call. Click Roast to open a window where Haiku 5.5 lists its issues. |
 | Roast | Copy `claude-code/roast.md` to `~/.claude/commands/` and `claude-code/cavedawg_roast.py` to `~/.claude/`, then run `/roast <prompt>`. |
 
 Anthropic doesn't document swapping models behind Claude Code as safe, so test it with real calls

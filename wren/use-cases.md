@@ -4,11 +4,12 @@ Paste each test into Wren, pointed at the deployed URL. W1 and W2 are the two re
 workflows. Runs cost $3 each after the first 10, so run W1 and W2 most and the others once.
 
 The final W1 and W2 runs must be against the final build, with real Claude calls, so Simulated
-responses must be off. Rehearsal runs can use it, and their rows are marked Simulated.
+responses must be off: no red "Demo only: Simulate responses" banner at the top (click Turn off if
+it is there). Rehearsal runs can use it, and their rows are marked Simulated.
 Expected results check labels and amounts, never Claude's wording, because replies vary.
 
 **Sign-in.** The page asks for a username and password. Create a demo login with all access first,
-in the Users section or with `python -m app.devs add "wren" --team Demo --access all` and then
+on the User management page or with `python -m app.devs add "wren" --team Demo --access all` and then
 `python -m app.devs password "wren"`. Start every test with: "Open the app, enter wren as the
 Username and <the password> as the Password, and click Sign in." Use a demo-only password, since it
 is pasted into Wren. Each step below that says "Open the app" means after signing in.
@@ -17,11 +18,10 @@ is pasted into Wren. Each step below that says "Open the app" means after signin
 
 Task: A developer finds a wasteful call and stops it from happening again.
 
-1. Open the app and click Reset demo.
-2. Choose Opus 5.5 as the model.
-3. Enter "Write a commit message for: fix typo in README" as the prompt and click Send call.
-4. Turn on Use recommended model.
-5. Click Send call again with the same prompt.
+1. Open the app and click Reset demo. Make sure Use recommended model is off.
+2. Enter "Write a commit message for: fix typo in README" as the prompt and click Run this prompt.
+3. Turn on Use recommended model, next to the Routing level slider.
+4. Click Run this prompt again with the same prompt.
 
 Expected:
 - The first call appears in Live calls on Opus 5.5 with the status Overkill.
@@ -34,10 +34,10 @@ Task: A team lead sets a limit and confirms calls stop at it.
 
 1. Open the app and click Reset demo.
 2. Click Edit budget, enter 0.0001, and click Save.
-3. Enter "Write a commit message for: fix typo in README" as the prompt and click Send call.
-4. Note the spent amount, then click Send call again.
+3. Enter "Write a commit message for: fix typo in README" as the prompt and click Run this prompt.
+4. Note the spent amount, then click Run this prompt again.
 5. Click Edit budget, enter 1, and click Save.
-6. Click Send call again.
+6. Click Run this prompt again.
 
 Expected:
 - The second call appears with the status Blocked by budget.
@@ -59,46 +59,46 @@ Expected:
 1. Open the app and click Reset demo.
 2. Enter "You are an expert. Please summarize this. Please summarize this." as the prompt.
 3. Click Roast this prompt.
-4. Click Roast this prompt again.
-5. Click the older run's heading in Roast results to open it.
+4. Close the Roast window.
 
 Expected:
-- The Roast results panel to the right of Live calls says 2 runs.
-- The newest run is open and shows a score out of 100, at least one issue, a suggested fix, and a
-  receipt naming the model and cost.
-- The older run opens when clicked.
+- After step 3, a Roast window opens over the page showing the prompt, the recommended model with a
+  reason, at least one issue, a suggested fix, and a receipt naming Haiku 5.5 and a cost. No score
+  is shown.
+- After step 4, the window is gone and no roast results are shown on the page itself.
 
 ## W4c: Roast a call that already ran
 
 1. Open the app and click Reset demo.
-2. Click the Simple task example and click Send call.
+2. Enter "Write a commit message for: fix typo in README" as the prompt and click Run this prompt.
 3. In Live calls, click the Roast button on that call's row.
+4. Close the Roast window, then click View roast on the same row.
 
 Expected:
-- A run appears in Roast results with a score out of 100 and a suggested fix.
-- The call's Roast button now shows the same score out of 100.
+- Live calls has the columns Time, Developer, Used model, Recommended model, Results and Roast.
+- After step 3, a Roast window opens with a Recommended model, issues and a suggested fix.
+- After step 4, the call's button says View roast and opens the same roast again.
 
 ## W4b: Take or override the recommended model
 
 1. Open the app and click Reset demo.
-2. Choose Opus 5.5 as the model.
-3. Enter "Write a commit message for: fix typo in README" as the prompt.
-4. Click Roast this prompt.
-5. Click Send call.
-6. Choose Opus 5.5 as the model again, then click Roast this prompt.
-7. Click Use Opus 5.5 anyway.
+2. Enter "Write a commit message for: fix typo in README" as the prompt.
+3. Click Roast this prompt, then close the Roast window.
+4. Click Run on recommended model.
+5. Choose Opus 5.5 in the menu beside Run this prompt, and click Run this prompt.
 
 Expected:
-- After step 4, the page recommends Haiku 5.5, the Model menu shows Haiku 5.5, and a Use Opus 5.5
-  anyway button appears below Send call.
-- The call from step 5 appears on Haiku 5.5 with the status OK.
-- The call from step 7 appears on Opus 5.5 with the status Overkill.
+- After step 3, the Roast window shows a Recommended model of Haiku 5.5, the Roast this prompt
+  button now says Run on recommended model, and a model menu appears beside Run this prompt.
+- The call from step 4 appears on Haiku 5.5 with the status OK.
+- The call from step 5 appears on Opus 5.5 with the status Overkill.
 
 ## W5: Don't flag real work
 
 1. Open the app and click Reset demo.
 2. Turn on Use recommended model.
-3. Choose Opus 5.5, click the Real design example, and click Send call.
+3. Enter "Design a multi-region failover architecture for a payments ledger. Compare consistency
+   models and list the failure modes." as the prompt and click Run this prompt.
 
 Expected: The call appears on Opus 5.5 with the status OK, and not Overkill or Downshifted.
 
@@ -114,9 +114,9 @@ call.
 
 1. Open the app and click Reset demo.
 2. Set Routing level to Fastest.
-3. Choose Opus 5.5, enter "Summarize this meeting transcript." as the prompt, and click Send call.
-4. Set Routing level to Full power and click Send call again.
-5. Enter "git push origin main" as the prompt and click Send call.
+3. Enter "Summarize this meeting transcript." as the prompt, and click Run this prompt.
+4. Set Routing level to Full power and click Run this prompt again.
+5. Enter "git push origin main" as the prompt and click Run this prompt.
 
 Expected:
 - The call from step 3 appears on Opus 5.5 with the status Overkill.
@@ -125,17 +125,19 @@ Expected:
 
 ## W8: Compare developers
 
-Create two developers first, in the Users section or with `python -m app.devs add`. This test uses
+Create two developers first, on the User management page or with `python -m app.devs add`. This test uses
 the names Ada and Grace.
 
 1. Open the app and click Reset demo.
-2. Choose Ada as the developer and Opus 5.5 as the model, then click the Simple task example.
-3. Click Send call five times.
-4. Choose Grace as the developer and Haiku 5.5 as the model.
-5. Click Send call five times.
+2. Make sure Use recommended model is off. Choose Ada as the developer, and enter "Write a commit
+   message for: fix typo in README" as the prompt.
+3. Click Run this prompt five times.
+4. Choose Grace as the developer and turn on Use recommended model.
+5. Click Run this prompt five times.
 
 Expected:
-- Each row in Live calls shows its developer, an Ideal model of Haiku 5.5, and a Used model.
+- Each row in Live calls shows its developer, a Used model, and a Recommended model of Haiku 5.5.
+- The Developer leaderboard sits above Live calls. Click Expand to see the full table.
 - The Developer leaderboard ranks Grace first at 0.0% overuse, and Ada second with higher overuse.
 - Each developer shows 5 prompts.
 
@@ -143,7 +145,8 @@ Expected:
 
 1. Open the app without signing in.
 2. Click Demo, create new token.
-3. Enter a new username and a password of at least 8 characters, and click Create login and token.
+3. Enter a new username and a password of at least 8 characters, leave Team blank and Access on
+   Self, and click Create login and token.
 4. Click Continue.
 
 Expected:
@@ -152,21 +155,21 @@ Expected:
 
 ## U1: Manage users
 
-1. Open the app. Scroll to Users.
+1. Open the app and click User management at the top.
 2. Enter "Barbara" as the Username and "Core" as the Team, choose Team access, and click Create user
    and token.
 3. Click New token on Barbara's row and accept the prompt.
 4. Click Set in Barbara's Password column, enter a password of at least 8 characters, and click Save.
 
 Expected:
-- Barbara appears in the Users table with team Core and Team access.
+- Barbara appears in the User management table with team Core and Team access.
 - A token box shows a first token after step 2 and a different token after step 3.
 - Barbara's Password column says Set.
 
 ## E1 and E4: Bad input and reset
 
-1. Open the app and click Send call with an empty prompt.
-2. Choose the Simple task example, click Send call, then click Reset demo.
+1. Open the app and click Run this prompt with an empty prompt.
+2. Enter "Write a commit message for: fix typo in README", click Run this prompt, then click Reset demo.
 
 Expected: The empty prompt shows "Enter a prompt before sending." with no new call. After reset,
 spent shows $0.0000 and Live calls is empty.

@@ -50,6 +50,7 @@ class FakeAnthropic:
     def __init__(self):
         self.requests = []
         self.status = 200
+        self.reply_text = "stub reply"
         self.error = None
         self.stop_reason = "end_turn"
         self.rejected_models = set()
@@ -82,7 +83,7 @@ class FakeAnthropic:
             200,
             json={
                 "model": body["model"],
-                "content": [{"type": "text", "text": "stub reply"}],
+                "content": [{"type": "text", "text": self.reply_text}],
                 "stop_reason": self.stop_reason,
                 "usage": USAGE,
             },

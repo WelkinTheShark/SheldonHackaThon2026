@@ -67,10 +67,15 @@ def test_only_all_access_can_manage(client):
     ada, grace, linus, _ = team_setup()
     for token in (ada, grace):
         headers = as_user(token)
-        assert client.put("/api/settings", json={"budget_usd": 9}, headers=headers).status_code == 403
+        # The shared budget is open to anyone signed in for the demo. Routing is not.
+        assert client.put("/api/settings", json={"budget_usd": 9}, headers=headers).status_code == 200
+        assert client.put("/api/settings", json={"level": 3}, headers=headers).status_code == 403
+        assert client.put("/api/settings", json={"use_recommended": True}, headers=headers).status_code == 403
         assert client.post("/api/reset", headers=headers).status_code == 403
-        assert client.get("/api/users", headers=headers).status_code == 403
+        # User management is open to anyone signed in, for the demo.
+        assert client.get("/api/users", headers=headers).status_code == 200
     assert client.get("/api/users", headers=as_user(linus)).status_code == 200
+    assert client.get("/api/users", headers={"x-cavedawg-token": ""}).status_code == 401
 
 
 def test_create_user_issues_a_working_token(client, anthropic):
@@ -153,3 +158,17 @@ def test_simulated_roast_says_so(client):
     assert "Simulated" in roasted["receipt"]["note"]
     client.put("/api/settings", json={"simulated": False})
     assert client.post("/api/roast", json={"text": SIMPLE}).json()["simulated"] is False
+
+
+def test_anyone_signed_in_can_turn_off_simulated_responses(client):
+    ada, *_ = team_setup()
+    client.put("/api/settings", json={"simulated": True})
+    response = client.put("/api/settings", json={"simulated": False}, headers=as_user(ada))
+    assert response.status_code == 200 and response.json()["simulated"] is False
+    both = {"simulated": True, "use_recommended": True}
+    assert client.put("/api/settings", json=both, headers=as_user(ada)).status_code == 403
+
+
+def test_playground_defaults_to_opus(client, anthropic):
+    client.post("/api/playground", json={"prompt": SIMPLE})
+    assert anthropic.models == [config.OPUS]

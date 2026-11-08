@@ -33,6 +33,19 @@ def test_demo_signup_follows_the_configured_access(client, monkeypatch):
     assert signup(client, "Eve").status_code == 403
 
 
+def test_signup_can_choose_team_and_access(client):
+    user = client.post(
+        "/api/signup", json={"name": "Dana", "password": GOOD, "team": " Core ", "access": "all"}
+    ).json()["user"]
+    assert (user["team"], user["access"]) == ("Core", "all")
+    blank = client.post(
+        "/api/signup", json={"name": "Eve", "password": GOOD, "team": "", "access": None}
+    ).json()["user"]
+    assert (blank["team"], blank["access"]) == ("Demo", "self")
+    bad = client.post("/api/signup", json={"name": "Fay", "password": GOOD, "access": "root"})
+    assert bad.status_code == 400
+
+
 def test_signup_refuses_taken_names_and_short_passwords(client):
     signup(client)
     assert signup(client).json()["error"] == "Dana is taken. Choose another username."
@@ -99,13 +112,13 @@ def test_admin_can_create_a_user_with_a_password(client):
     assert client.post("/api/login", json={"name": "Grace", "password": GOOD}).status_code == 200
 
 
-def test_users_cannot_change_passwords_without_all_access(client):
+def test_any_signed_in_user_can_manage_users_for_the_demo(client):
     session = signup(client).json()["session"]
     user_id = store.list_developers()[0]["id"]
     response = client.patch(
         f"/api/users/{user_id}", json={"password": "my own idea"}, headers=page(session)
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 def test_passwords_are_never_returned_or_stored_plain(client):

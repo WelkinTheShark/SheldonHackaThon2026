@@ -30,7 +30,8 @@ try {
   } else {
     Remove-Item env:ANTHROPIC_UPSTREAM -ErrorAction SilentlyContinue
   }
-  $procs += Start-Process python -ArgumentList "-m uvicorn app.main:app --port 8000" -NoNewWindow -PassThru
+  # --reload picks up Python edits without a restart, so the tunnel URL stays the same.
+  $procs += Start-Process python -ArgumentList "-m uvicorn app.main:app --port 8000 --reload --reload-dir app" -NoNewWindow -PassThru
 
   $log = Join-Path $env:TEMP "cavedawg-tunnel.log"
   Remove-Item $log -ErrorAction SilentlyContinue

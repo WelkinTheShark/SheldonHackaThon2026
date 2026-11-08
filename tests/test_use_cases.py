@@ -72,7 +72,13 @@ def test_w4_roast_a_prompt(client, anthropic):
     assert result["fix"] == "stub reply"
     assert result["receipt"]["model"] == "Haiku 5.5"
     assert result["receipt"]["cost_usd"] > 0
-    assert "skipped" in result["receipt"]["note"]
+    assert result["roasted"] is True
+
+
+def test_w4_haiku_lists_the_issues(client, anthropic):
+    anthropic.reply_text = '{"issues": ["The request is said twice."], "fix": "Say it once."}'
+    result = client.post("/api/roast", json={"text": "Summarize this. Summarize this."}).json()
+    assert (result["issues"], result["fix"]) == (["The request is said twice."], "Say it once.")
 
 
 @pytest.mark.parametrize(
@@ -162,10 +168,10 @@ def test_w7_rejects_an_unknown_level_and_reset_restores_the_default(client, anth
     assert summary(client)["level"] == config.DEFAULT_LEVEL
 
 
-def test_w4_long_setups_use_sonnet(client, anthropic):
+def test_w4_long_setups_also_use_haiku(client, anthropic):
     tools = json.dumps({"tools": [{"name": f"tool_{i}"} for i in range(20)]})
     result = client.post("/api/roast", json={"text": tools}).json()
-    assert result["receipt"]["model"] == "Sonnet 5.5"
+    assert result["receipt"]["model"] == "Haiku 5.5"
     assert any("20 tools" in issue for issue in result["issues"])
 
 
@@ -187,7 +193,7 @@ def test_w5_real_work_is_not_flagged(client, anthropic):
 def test_w6_first_visit(client):
     page = client.get("/")
     assert page.status_code == 200
-    assert "Send call" in page.text
+    assert "Run this prompt" in page.text
     assert "No calls yet" in page.text
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/api/calls").json() == []
@@ -202,7 +208,7 @@ def test_e1_empty_prompt(client, anthropic):
 
 
 def test_e1_unlisted_model_and_long_prompt(client, anthropic):
-    assert send(client, model="claude-fable-5-1").status_code == 400
+    assert send(client, model="claude-not-a-model").status_code == 400
     assert send(client, "x" * 8_001).status_code == 400
     assert anthropic.requests == []
 

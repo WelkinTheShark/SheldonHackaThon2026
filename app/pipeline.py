@@ -124,6 +124,15 @@ def _check_limits(ctx: Context, model: str, body: dict, simulated: bool) -> Outc
             f"Spent ${totals['spent']:.4f} of the ${current['budget_usd']:.4f} budget. "
             "Raise the budget to continue.",
         )
+    developer = store.get_developer(ctx.developer_id) if ctx.developer_id else None
+    if developer and developer.get("budget_usd") is not None:
+        spent = store.developer_spent().get(developer["id"], 0.0)
+        if spent >= developer["budget_usd"]:
+            return _refuse(
+                ctx, model, "Blocked by budget",
+                f"{developer['name']} has spent ${spent:.4f} of their "
+                f"${developer['budget_usd']:.4f} budget. Raise it on User management to continue.",
+            )
     looping, count, tool = rules.is_loop(body.get("messages", []))
     if looping:
         saved = _input_cost_estimate(model, rules.estimate_tokens(body))

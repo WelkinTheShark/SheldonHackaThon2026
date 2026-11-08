@@ -17,6 +17,17 @@ from . import access, config, devs, pipeline, roast, store, team, upstream
 from .access import Viewer
 
 STATIC = Path(__file__).parent / "static"
+
+
+def _build_stamp() -> int:
+    """Newest mtime of the server's Python files. The page holds the stamp from when it loaded
+    and /api/summary reports the one this process started with, so a server still running old
+    code, or a tab older than the server, is noticed. Page files are read from disk on every
+    request, so they don't count."""
+    return max(int(path.stat().st_mtime) for path in Path(__file__).parent.glob("*.py"))
+
+
+BUILD = _build_stamp()
 FORWARDED_RESPONSE_HEADERS = {"request-id", "retry-after", "x-should-retry"}
 BLOCKED_STATUSES = {"Blocked by budget", "Demo limit reached", "Loop stopped"}
 FLAGGED_STATUSES = {
@@ -217,7 +228,8 @@ async def metrics(request: Request):
 
 
 class PlaygroundCall(BaseModel):
-    model: str
+    # Calls go out on Opus unless the page picks a model, or Use recommended model moves them.
+    model: str = config.OPUS
     prompt: str
     developer_id: int | None = None
     keep_model: bool = False
@@ -230,7 +242,8 @@ async def playground(call: PlaygroundCall, viewer: Viewer = Depends(access.requi
         return _api_error("Enter a prompt before sending.")
     if len(prompt) > config.PROMPT_MAX_CHARS:
         return _api_error(f"Shorten the prompt to {config.PROMPT_MAX_CHARS:,} characters or fewer.")
-    if call.model not in config.PLAYGROUND_MODELS:
+    # Any priced model is allowed, so Run on recommended model also works when Fable is ideal.
+    if call.model not in config.MODEL_LABELS:
         return _api_error("Choose one of the listed models.")
     # Only all-access users may send on someone else's behalf. Everyone else sends as themselves.
     chose = "developer_id" in call.model_fields_set
@@ -341,19 +354,38 @@ def _names() -> dict:
     return {developer["id"]: developer["name"] for developer in store.list_developers()}
 
 
+def _visible_calls(viewer: Viewer) -> list[dict]:
+    scope = access.scope(viewer)
+    return [call for call in store.list_calls(-1) if scope is None or call["developer_id"] in scope]
+
+
+def _can_see_roast(viewer: Viewer, row: dict, visible_hashes: set) -> bool:
+    scope = access.scope(viewer)
+    return scope is None or row["developer_id"] in scope or row["prompt_hash"] in visible_hashes
+
+
 @app.get("/api/roasts")
 async def roasts(viewer: Viewer = Depends(access.require_viewer)):
     """Roasts by people this viewer can see, plus roasts of calls this viewer can see."""
-    scope = access.scope(viewer)
-    visible_hashes = {
-        call["prompt_hash"] for call in store.list_calls(-1)
-        if call["prompt_hash"] and (scope is None or call["developer_id"] in scope)
-    }
-    shown = [
-        row for row in store.list_roasts()
-        if scope is None or row["developer_id"] in scope or row["prompt_hash"] in visible_hashes
-    ]
+    visible_hashes = {call["prompt_hash"] for call in _visible_calls(viewer) if call["prompt_hash"]}
+    shown = [row for row in store.list_roasts() if _can_see_roast(viewer, row, visible_hashes)]
     return [_roast_view(roast.view(row)) for row in shown[: config.HISTORY_LIMIT]]
+
+
+@app.post("/api/roasts/{roast_id}/roast")
+async def roast_again(roast_id: int, viewer: Viewer = Depends(access.require_viewer)):
+    """Run Haiku on a rules-only roast, filling in its issues and fix in place."""
+    row = store.get_roast(roast_id)
+    calls = _visible_calls(viewer)
+    hashes = {call["prompt_hash"] for call in calls if call["prompt_hash"]}
+    if not row or not _can_see_roast(viewer, row, hashes):
+        return _api_error("You can't see that roast.", 404)
+    worded = next(
+        (c for c in calls if c["prompt_hash"] == row["prompt_hash"] and c["prompt_text"]), None
+    )
+    if not worded:
+        return _api_error("This prompt's words weren't kept, so it can't be roasted.")
+    return _roast_view(await roast.run(worded["prompt_text"], viewer.id, replace=row))
 
 
 class SettingsUpdate(BaseModel):
@@ -364,7 +396,11 @@ class SettingsUpdate(BaseModel):
 
 
 @app.put("/api/settings")
-async def update_settings(update: SettingsUpdate, _: Viewer = Depends(access.require_manager)):
+async def update_settings(update: SettingsUpdate, viewer: Viewer = Depends(access.require_viewer)):
+    # Anyone signed in may flip Simulated responses (it stops real Claude Code work) and, for the
+    # demo, change the shared budget. Routing settings stay with all-access users.
+    if update.model_fields_set - {"simulated", "budget_usd"} and not viewer.can_manage:
+        return _api_error("Only users with all access can change this.", 403)
     budget = update.budget_usd
     if budget is not None and (not math.isfinite(budget) or budget < 0):
         return _api_error("Enter a budget of $0 or more.")
@@ -424,6 +460,7 @@ async def summary(viewer: Viewer = Depends(access.require_viewer)):
         # Spend and budget are shared by the whole demo, so everyone sees the same meter.
         **store.totals(),
         **store.get_settings(),
+        "build": BUILD,
         "viewer": viewer.public(),
         "latest_flag": _latest_flag(_visible_calls(viewer)),
         "models": [
@@ -453,13 +490,14 @@ async def reset(_: Viewer = Depends(access.require_manager)):
     return {"ok": True}
 
 
-# ---- User management. All access only.
+# ---- User management. For the demo, anyone signed in may use it.
 
 class NewUser(BaseModel):
     name: str
     team: str = ""
     access: str = "self"
     password: str = ""
+    budget_usd: float | None = None  # None means no budget of their own
 
 
 class UserUpdate(BaseModel):
@@ -468,6 +506,8 @@ class UserUpdate(BaseModel):
     access: str | None = None
     swaps_allowed: bool | None = None
     password: str | None = None
+    # Sent as null to clear the limit, so it is read through model_fields_set.
+    budget_usd: float | None = None
 
 
 class Login(BaseModel):
@@ -478,16 +518,27 @@ class Login(BaseModel):
 class Signup(BaseModel):
     name: str
     password: str
+    # Both optional. Blank means team Demo and the access from CAVEDAWG_DEMO_ACCESS.
+    team: str = ""
+    access: str | None = None
 
 
-def _user(developer: dict) -> dict:
+def _user(developer: dict, spent: dict[int, float] | None = None) -> dict:
+    spent = store.developer_spent() if spent is None else spent
     return {
         **{
             key: developer[key]
-            for key in ("id", "name", "team", "access", "swaps_allowed", "created")
+            for key in ("id", "name", "team", "access", "swaps_allowed", "created", "budget_usd")
         },
+        "spent_usd": spent.get(developer["id"], 0.0),
         "has_password": bool(developer["password_hash"]),
     }
+
+
+def _budget_problem(budget: float | None) -> str | None:
+    if budget is not None and (not math.isfinite(budget) or budget < 0):
+        return "Enter a budget of $0 or more."
+    return None
 
 
 def _password_problem(password: str) -> str | None:
@@ -513,14 +564,17 @@ def _check_user_fields(name: str | None, level: str | None) -> str | None:
 
 
 @app.get("/api/users")
-async def users(_: Viewer = Depends(access.require_manager)):
-    return [_user(developer) for developer in store.list_developers()]
+async def users(_: Viewer = Depends(access.require_viewer)):
+    spent = store.developer_spent()
+    return [_user(developer, spent) for developer in store.list_developers()]
 
 
 @app.post("/api/users")
-async def create_user(new: NewUser, _: Viewer = Depends(access.require_manager)):
-    problem = _check_user_fields(new.name, new.access) or (
-        _password_problem(new.password) if new.password else None
+async def create_user(new: NewUser, _: Viewer = Depends(access.require_viewer)):
+    problem = (
+        _check_user_fields(new.name, new.access)
+        or (_password_problem(new.password) if new.password else None)
+        or _budget_problem(new.budget_usd)
     )
     if problem:
         return _api_error(problem)
@@ -530,8 +584,9 @@ async def create_user(new: NewUser, _: Viewer = Depends(access.require_manager))
         return _api_error(f"{new.name.strip()} already exists.")
     if new.password:
         store.set_password(developer["id"], new.password)
-        developer = store.get_developer(developer["id"])
-    return _issued(developer, token)
+    if new.budget_usd is not None:
+        store.update_developer(developer["id"], budget_usd=new.budget_usd)
+    return _issued(store.get_developer(developer["id"]), token)
 
 
 # ---- Page login. Passwords open a page session; tokens still work for Claude Code and the page.
@@ -553,15 +608,17 @@ async def login(body: Login):
 @app.post("/api/signup")
 async def signup(body: Signup):
     """The sign-in page's Demo button: a new login with its own Claude Code token."""
-    level = config.settings.demo_access
-    if level not in access.LEVELS:
+    if config.settings.demo_access not in access.LEVELS:
         return _api_error("Demo logins are turned off. Ask your admin for an account.", 403)
+    # The person may pick their own team and access. Anyone signed in can change users anyway.
+    level = body.access or config.settings.demo_access
+    team = body.team.strip() or config.DEMO_TEAM
     name = body.name.strip()
     problem = _check_user_fields(name, level) or _password_problem(body.password)
     if problem:
         return _api_error(problem)
     try:
-        developer, token = store.add_developer(name, config.DEMO_TEAM, level)
+        developer, token = store.add_developer(name, team, level)
     except sqlite3.IntegrityError:
         return _api_error(f"{name} is taken. Choose another username.")
     store.set_password(developer["id"], body.password)
@@ -585,14 +642,18 @@ def _viewer_of(developer: dict) -> dict:
 
 @app.patch("/api/users/{user_id}")
 async def update_user(
-    user_id: int, update: UserUpdate, _: Viewer = Depends(access.require_manager)
+    user_id: int, update: UserUpdate, _: Viewer = Depends(access.require_viewer)
 ):
-    problem = _check_user_fields(update.name, update.access) or (
-        _password_problem(update.password) if update.password is not None else None
+    problem = (
+        _check_user_fields(update.name, update.access)
+        or (_password_problem(update.password) if update.password is not None else None)
+        or _budget_problem(update.budget_usd)
     )
     if problem:
         return _api_error(problem)
     fields = update.model_dump(exclude_none=True)
+    if "budget_usd" in update.model_fields_set:
+        fields["budget_usd"] = update.budget_usd  # None clears this user's limit
     password = fields.pop("password", None)
     if password is not None and not store.set_password(user_id, password):
         return _api_error("No such user.", 404)
@@ -611,16 +672,35 @@ async def update_user(
 
 
 @app.post("/api/users/{user_id}/token")
-async def new_token(user_id: int, _: Viewer = Depends(access.require_manager)):
+async def new_token(user_id: int, _: Viewer = Depends(access.require_viewer)):
     token = store.rotate_token(user_id)
     if not token:
         return _api_error("No such user.", 404)
     return _issued(store.get_developer(user_id), token)
 
 
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+class _FreshStatic(StaticFiles):
+    # Without this, browsers and Cloudflare's edge keep an old app.js after a deploy, and an old
+    # script on a new page fails to start, so no button works.
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", _FreshStatic(directory=STATIC), name="static")
+
+
+def _versioned(html: str) -> str:
+    # Each file's mtime goes in its URL, so a changed file is a new URL no cache has seen.
+    for name in ("app.js", "style.css"):
+        stamp = int((STATIC / name).stat().st_mtime)
+        html = html.replace(f"/static/{name}\"", f"/static/{name}?v={stamp}\"")
+    # The files on disk now. /api/summary reports the build the server process started with.
+    return html.replace("</head>", f'<meta name="cavedawg-build" content="{_build_stamp()}">\n</head>', 1)
 
 
 @app.get("/")
 async def index():
-    return FileResponse(STATIC / "index.html")
+    html = _versioned((STATIC / "index.html").read_text(encoding="utf-8"))
+    return Response(html, media_type="text/html", headers={"Cache-Control": "no-cache"})

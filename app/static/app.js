@@ -1,11 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
-const EXAMPLES = {
-  simple: "Write a commit message for: fix typo in README",
-  design:
-    "Design a multi-region failover architecture for a payments ledger. " +
-    "Compare consistency models and list the failure modes.",
-};
+// The page has no model menu. Calls go out on Opus, and Use recommended model moves them.
+const SEND_MODEL = "claude-opus-5-5";
 
 const STAMPS = {
   OK: "ok",
@@ -29,14 +25,13 @@ const TOKEN_KEY = "cavedawg.token";
 
 let newestSeen = 0;
 let modelsLoaded = false;
-let pickedModel = null;
-let keepNext = false;
+let modelLabels = {};
+let recommendedModel = null;
 let levels = [];
 let levelEditing = false;
 let viewer = null;
 let roastRuns = [];
-let roastKey = "";
-let selectedRoast = null;
+let settingsVersion = 0;
 let pollTimer = null;
 
 function storedToken() {
@@ -116,8 +111,13 @@ function setDemoMode(on) {
   demoMode = on;
   $("signin-title").textContent = on ? "Create a demo login" : "Sign in to CaveDawg";
   $("signin-hint").textContent = on
-    ? `Choose a username and a password of 8 or more characters. You get ${ACCESS_NAMES[demoAccess] ?? "Self"} access, and a token for Claude Code.`
+    ? "Choose a username, a password of 8 or more characters, your team and your access. You also get a token for Claude Code."
     : "CaveDawg shows what your team's AI calls cost and stops the waste.";
+  $("demo-fields").hidden = !on;
+  if (on) {
+    $("signin-team").value = "";
+    $("signin-access").value = demoAccess ?? "self";
+  }
   $("signin-password").autocomplete = on ? "new-password" : "current-password";
   $("signin-submit").textContent = on ? "Create login and token" : "Sign in";
   $("demo-toggle").textContent = on ? "Back to sign in" : "Demo, create new token";
@@ -157,6 +157,9 @@ function signOut(message = "") {
   document.body.classList.remove("can-manage");
   $("who").textContent = "";
   $("sign-out").hidden = true;
+  $("users-link").hidden = true;
+  $("simulated-on").hidden = true;
+  $("simulated-banner").hidden = true;
   clearInterval(pollTimer);
   pollTimer = null;
   showSignIn(message && message !== "Sign in to CaveDawg." ? message : "");
@@ -168,6 +171,10 @@ function applyViewer(me) {
   const team = me.team ? `, team ${me.team}` : "";
   $("who").textContent = `Signed in as ${me.name}${team}, ${ACCESS_NAMES[me.access]} access`;
   $("sign-out").hidden = false;
+  $("users-link").hidden = false;
+  // Everyone sees the routing controls. Only all-access users can change them.
+  $("level").disabled = !me.can_manage;
+  $("use-recommended").disabled = !me.can_manage;
 }
 
 async function start() {
@@ -182,7 +189,7 @@ async function start() {
   }
   if ($("signin-dialog").open) $("signin-dialog").close();
   await refreshQuietly();
-  if (viewer?.can_manage) loadUsers();
+  showView();
   clearInterval(pollTimer);
   pollTimer = setInterval(refreshQuietly, 2000);
 }
@@ -197,7 +204,12 @@ $("signin-form").addEventListener("submit", async (event) => {
   setStatus($("signin-error"), demoMode ? "Creating your login" : "Signing in");
   try {
     if (demoMode) {
-      const created = await postJson("/api/signup", { name, password });
+      const created = await postJson("/api/signup", {
+        name,
+        password,
+        team: $("signin-team").value.trim(),
+        access: $("signin-access").value,
+      });
       rememberToken(created.session);
       $("signin-dialog").close();
       $("welcome-token").value = created.token;
@@ -247,17 +259,20 @@ $("sign-out").addEventListener("click", () => signOut());
 
 function roastCell(call) {
   const td = cell("", "roast-cell");
-  if (call.roast) {
-    const button = element("button", "roast-button scored", `${call.roast.score}/100`);
+  const run = call.roast && roastRuns.find((item) => item.id === call.roast.id);
+  if (run?.roasted) {
+    const button = element("button", "roast-button scored", "View roast");
     button.type = "button";
     button.title = "Show this call's roast";
-    button.addEventListener("click", () => selectRoast(call.roast.id));
+    button.addEventListener("click", () => showRoast(run));
     td.append(button);
-  } else if (call.roast_call_id) {
+  } else if (call.roast || call.roast_call_id) {
     const button = element("button", "roast-button", "Roast");
     button.type = "button";
-    button.title = "Score this call's prompt for wasted tokens";
-    button.addEventListener("click", () => roastCall(call.roast_call_id, button));
+    button.title = "Have Haiku 5.5 read this call's prompt for wasted tokens";
+    button.addEventListener("click", () =>
+      call.roast ? roastRun(call.roast.id, button) : roastCall(call.roast_call_id, button, call.prompt),
+    );
     td.append(button);
   }
   return td;
@@ -273,27 +288,21 @@ function renderCalls(rows) {
         hour: "numeric",
         minute: "2-digit",
       });
-      const prompt = cell(call.prompt || "None recorded", "prompt");
-      prompt.title = call.prompt;
-      if (call.calls > 1) prompt.append(element("span", "row-note", `${call.calls} calls`));
-      const ideal = cell(call.ideal_label || "Not rated");
-      if (call.decided_by) ideal.append(element("span", "row-note", `Judged by ${call.decided_by}`));
-      row.append(
-        cell(time),
-        cell(call.developer),
-        prompt,
-        ideal,
-        cell(call.used_label),
-        cell(call.tokens ? call.tokens.toLocaleString() : "None", "num"),
-        cell(call.cost_usd ? money(call.cost_usd) : "$0", "num"),
-      );
-      const status = cell("", "status");
-      status.append(element("span", `stamp ${STAMPS[call.status] || "ok"}`, call.status));
+      const recommended = cell(call.ideal_label || "Not rated");
+      if (call.decided_by) recommended.append(element("span", "row-note", `Judged by ${call.decided_by}`));
+      const results = cell("", "status");
+      results.title = call.prompt || "";
+      results.append(element("span", `stamp ${STAMPS[call.status] || "ok"}`, call.status));
       if (["Error", "Dropped", "Swap failed"].includes(call.status)) {
-        status.append(element("span", "row-note", call.reason));
+        results.append(element("span", "row-note", call.reason));
       }
-      if (call.simulated) status.append(element("span", "row-note", "Simulated"));
-      row.append(status, roastCell(call));
+      const tokens = call.tokens ? `${call.tokens.toLocaleString()} tokens` : "No tokens";
+      const calls = call.calls > 1 ? ` · ${call.calls} calls` : "";
+      results.append(
+        element("span", "row-note", `${call.cost_usd ? money(call.cost_usd) : "$0"} · ${tokens}${calls}`),
+      );
+      if (call.simulated) results.append(element("span", "row-note sim", "Simulated"));
+      row.append(cell(time), cell(call.developer), cell(call.used_label), recommended, results, roastCell(call));
       return row;
     }),
   );
@@ -307,30 +316,211 @@ function duration(seconds) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-function renderBoard({ rows, minimum_prompts: minimum }) {
-  $("board").hidden = rows.length === 0;
+// ---- Developer leaderboard. Compact: team summary and the top two. Expanded: every column,
+// sortable by its header and filterable by the box under it.
+
+// Efficiency is the share of rated spend that was not above each prompt's ideal model.
+function efficiency(entry) {
+  return entry.prompts ? Math.max(0, 100 - entry.overuse_percent) : null;
+}
+
+function rating(entry) {
+  const value = efficiency(entry);
+  if (value === null) return null;
+  if (value >= 90) return "A";
+  if (value >= 75) return "B";
+  if (value >= 50) return "C";
+  return "D";
+}
+
+const BOARD_COLUMNS = [
+  { key: "rank", label: "Rank", num: true, value: (r) => r.rank, show: (r) => r.rank ?? "Unranked" },
+  { key: "developer", label: "Developer", value: (r) => r.developer },
+  { key: "rating", label: "Rating", value: rating, show: (r) => rating(r) ?? "–" },
+  {
+    key: "efficiency", label: "Efficiency", num: true, value: efficiency,
+    show: (r) => (efficiency(r) === null ? "–" : `${efficiency(r).toFixed(1)}%`),
+  },
+  { key: "prompts", label: "Prompts", num: true, value: (r) => r.prompts },
+  { key: "tokens", label: "Tokens", num: true, value: (r) => r.tokens, show: (r) => r.tokens.toLocaleString() },
+  { key: "cost", label: "Cost", num: true, value: (r) => r.cost_usd, show: (r) => money(r.cost_usd) },
+  { key: "time", label: "Dev time (min)", num: true, value: (r) => r.dev_seconds / 60 },
+  {
+    key: "overuse", label: "Overuse", num: true, value: (r) => r.overuse_percent,
+    show: (r) => `${r.overuse_percent.toFixed(1)}%`,
+  },
+  { key: "overspend", label: "Overspend", num: true, value: (r) => r.overspend_usd, show: (r) => money(r.overspend_usd) },
+];
+
+let boardRows = [];
+let boardOrder = { key: "rank", dir: 1 };
+const boardFilters = {};
+
+// Text columns match any part of the text. Number columns take "5" (at least 5), or >, <, >=,
+// <=, = before the number. A $ or % is ignored.
+function numberFilter(text) {
+  const match = text.trim().match(/^(<=|>=|<|>|=)?\s*\$?(-?\d*\.?\d+)%?$/);
+  if (!match) return null;
+  const [, op = ">=", raw] = match;
+  const target = Number(raw);
+  return (value) => {
+    if (value === null || value === undefined) return false;
+    if (op === "<") return value < target;
+    if (op === ">") return value > target;
+    if (op === "<=") return value <= target;
+    if (op === "=") return Math.abs(value - target) < 1e-9;
+    return value >= target;
+  };
+}
+
+function boardMatches(entry) {
+  return BOARD_COLUMNS.every((column) => {
+    const text = (boardFilters[column.key] || "").trim();
+    if (!text) return true;
+    if (column.num) {
+      const test = numberFilter(text);
+      return test ? test(column.value(entry)) : true; // an unreadable filter is marked and ignored
+    }
+    const shown = column.show ? column.show(entry) : column.value(entry);
+    return String(shown ?? "").toLowerCase().includes(text.toLowerCase());
+  });
+}
+
+function compareBy(column, dir) {
+  return (a, b) => {
+    const x = column.value(a);
+    const y = column.value(b);
+    // Empty values sort last whichever way the column runs.
+    const xEmpty = x === null || x === undefined;
+    const yEmpty = y === null || y === undefined;
+    if (xEmpty || yEmpty) return xEmpty === yEmpty ? a.developer.localeCompare(b.developer) : xEmpty ? 1 : -1;
+    const order = typeof x === "string" ? x.localeCompare(y) : x - y;
+    return order * dir || a.developer.localeCompare(b.developer);
+  };
+}
+
+function buildBoardHead() {
+  $("board-head-row").replaceChildren(
+    ...BOARD_COLUMNS.map((column) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.dataset.key = column.key;
+      if (column.num) th.className = "num";
+      const button = element("button", "sort", column.label);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        // A first click puts the best or biggest on top; a second click flips it.
+        boardOrder = boardOrder.key === column.key
+          ? { key: column.key, dir: -boardOrder.dir }
+          : { key: column.key, dir: column.num && column.key !== "rank" ? -1 : 1 };
+        renderBoardTable();
+      });
+      th.append(button);
+      return th;
+    }),
+  );
+  $("board-filter-row").replaceChildren(
+    ...BOARD_COLUMNS.map((column) => {
+      const td = document.createElement("td");
+      const input = element("input");
+      input.type = "text";
+      input.placeholder = column.num ? "e.g. >5" : "Filter";
+      input.setAttribute("aria-label", `Filter ${column.label}`);
+      input.addEventListener("input", () => {
+        boardFilters[column.key] = input.value;
+        const bad = Boolean(column.num && input.value.trim() && !numberFilter(input.value));
+        input.setAttribute("aria-invalid", String(bad));
+        renderBoardTable();
+      });
+      td.append(input);
+      return td;
+    }),
+  );
+}
+
+function renderBoardTable() {
+  const column = BOARD_COLUMNS.find((c) => c.key === boardOrder.key);
+  for (const th of $("board-head-row").children) {
+    const active = th.dataset.key === boardOrder.key;
+    th.setAttribute("aria-sort", active ? (boardOrder.dir > 0 ? "ascending" : "descending") : "none");
+    th.firstChild.dataset.arrow = active ? (boardOrder.dir > 0 ? "▲" : "▼") : "";
+  }
+  const shown = boardRows.filter(boardMatches).sort(compareBy(column, boardOrder.dir));
   $("board-rows").replaceChildren(
-    ...rows.map((entry) => {
+    ...shown.map((entry) => {
       const row = document.createElement("tr");
-      const time = cell(duration(entry.dev_seconds), "num");
-      time.append(element("span", "row-note", entry.dev_time_source));
-      row.append(
-        cell(entry.rank ?? "Unranked"),
-        cell(entry.developer),
-        cell(entry.prompts, "num"),
-        cell(entry.tokens.toLocaleString(), "num"),
-        cell(money(entry.cost_usd), "num"),
-        time,
-        cell(`${entry.overuse_percent.toFixed(1)}%`, "num"),
-        cell(money(entry.overspend_usd), "num"),
-      );
+      for (const c of BOARD_COLUMNS) {
+        if (c.key === "time") {
+          const time = cell(duration(entry.dev_seconds), "num");
+          time.append(element("span", "row-note", entry.dev_time_source));
+          row.append(time);
+        } else {
+          row.append(cell(c.show ? c.show(entry) : c.value(entry), c.num ? "num" : ""));
+        }
+      }
       return row;
     }),
   );
-  $("board-note").textContent =
-    "Overuse is the share of rated spend above each prompt's ideal model, lowest first. " +
-    `A rank needs ${minimum} rated prompts. Ratings are judgments, not a performance measure.`;
+  $("board-nomatch").hidden = !boardRows.length || shown.length > 0;
 }
+
+const COMPACT_ORDER = {
+  efficiency: { column: "efficiency", note: "most efficient first" },
+  cost: { column: "cost", note: "highest spend first" },
+  prompts: { column: "prompts", note: "most prompts first" },
+};
+
+function renderBoardCompact() {
+  const order = COMPACT_ORDER[$("board-sort").value];
+  const column = BOARD_COLUMNS.find((c) => c.key === order.column);
+  const active = boardRows.filter((r) => r.prompts || r.cost_usd);
+  const top = [...active].sort(compareBy(column, -1)).slice(0, 2);
+  $("board-top").replaceChildren(
+    ...top.map((entry, index) => {
+      const item = element("li", "board-card");
+      const grade = rating(entry);
+      const eff = efficiency(entry);
+      item.append(
+        element("span", "board-place", `#${index + 1}`),
+        element("span", "board-name", entry.developer),
+        element("span", `board-grade grade-${(grade || "none").toLowerCase()}`, grade ?? "–"),
+        element("span", "board-stats",
+          `${eff === null ? "No rated prompts" : `${eff.toFixed(0)}% efficient`} · ${money(entry.cost_usd, 2)}`),
+      );
+      item.title = `Rating ${grade ?? "none"}: A is 90% efficient or better, B 75%, C 50%, D below.`;
+      return item;
+    }),
+  );
+  const cost = active.reduce((sum, r) => sum + r.cost_usd, 0);
+  const rated = active.filter((r) => r.prompts);
+  const ratedCost = rated.reduce((sum, r) => sum + r.cost_usd, 0);
+  // Rough: each developer's efficiency weighted by what they spent.
+  const teamEfficiency = ratedCost
+    ? rated.reduce((sum, r) => sum + efficiency(r) * r.cost_usd, 0) / ratedCost
+    : null;
+  $("board-summary").textContent = active.length
+    ? `Team: about ${money(cost, 2)} across ${active.length} developer${active.length === 1 ? "" : "s"}` +
+      (teamEfficiency === null ? "" : `, ${teamEfficiency.toFixed(0)}% efficient`) +
+      `. Ranked ${order.note}.`
+    : "";
+}
+
+function renderBoard({ rows }) {
+  boardRows = rows;
+  $("board-empty").hidden = rows.length > 0;
+  renderBoardCompact();
+  if (!$("board-full").hidden) renderBoardTable();
+}
+
+buildBoardHead();
+$("board-sort").addEventListener("change", renderBoardCompact);
+$("board-toggle").addEventListener("click", () => {
+  const open = $("board-full").hidden;
+  $("board-full").hidden = !open;
+  $("board-toggle").textContent = open ? "Collapse" : "Expand";
+  $("board-toggle").setAttribute("aria-expanded", String(open));
+  if (open) renderBoardTable();
+});
 
 function renderDevelopers(developers) {
   const wanted = [
@@ -344,30 +534,38 @@ function renderDevelopers(developers) {
   $("developer").value = selected;
 }
 
-function renderFlag(flag) {
-  $("why").hidden = !flag;
-  if (!flag) return;
-  $("why-reason").textContent = flag.reason;
-  $("why-math").textContent =
-    flag.ideal_cost_usd === undefined
-      ? ""
-      : `Same call on ${flag.ideal_label}: ${money(flag.ideal_cost_usd)}. ` +
-        `Projection at 100 calls a day: saves ${money(flag.projected_monthly_saving_usd, 2)} a month (estimate).`;
-}
-
 function renderLevel(value) {
   const current = levels.find(({ level }) => level === value);
   if (!current) return;
   $("level").setAttribute("aria-valuetext", current.name);
-  $("level-note").textContent = current.summary;
+  $("level").title = current.summary;
   for (const tick of $("level-ticks").children) {
     tick.classList.toggle("current", tick.textContent === current.name);
   }
 }
 
+// The server's Python build when this page loaded. See _build_stamp in app/main.py.
+const PAGE_BUILD = Number(document.querySelector('meta[name="cavedawg-build"]')?.content || 0);
+
+function renderBuild(serverBuild) {
+  // A server from before build stamps sends none, and it also serves the page without one.
+  const serverOld = !serverBuild || (PAGE_BUILD && PAGE_BUILD > serverBuild);
+  if (!serverOld && (!PAGE_BUILD || serverBuild === PAGE_BUILD)) {
+    $("stale-banner").hidden = true;
+    return;
+  }
+  $("stale-text").textContent = serverOld
+    ? "The server is running older code than the files on disk. Restart it (.\serve.ps1), then reload."
+    : "The server was updated. Reload the page.";
+  $("stale-banner").hidden = false;
+}
+
 function renderSummary(summary) {
+  renderBuild(summary.build);
   $("spent").textContent = money(summary.spent);
   $("budget").textContent = money(summary.budget_usd);
+  $("team-spent").textContent = money(summary.spent);
+  $("team-budget").textContent = money(summary.budget_usd);
   $("saved").textContent = money(summary.saved);
   $("count").textContent = summary.calls;
   $("blocked").textContent = summary.blocked;
@@ -378,18 +576,15 @@ function renderSummary(summary) {
   $("meter-bar").setAttribute("aria-valuenow", Math.round(percent));
   document.querySelector(".meter").classList.toggle("over", percent >= 100);
   $("use-recommended").checked = summary.use_recommended;
-  $("simulated").checked = summary.simulated;
-  $("simulated-banner").hidden = !summary.simulated;
-  renderFlag(summary.latest_flag);
   renderDevelopers(summary.developers);
   if (summary.viewer.access !== viewer?.access || summary.viewer.team !== viewer?.team) {
     applyViewer(summary.viewer);
   }
 
   if (!modelsLoaded) {
-    $("model").replaceChildren(
-      ...summary.models.map(({ id, label }) => new Option(label, id)),
-    );
+    modelLabels = Object.fromEntries(summary.models.map(({ id, label }) => [id, label]));
+    $("run-model").replaceChildren(...summary.models.map(({ id, label }) => new Option(label, id)));
+    $("run-model").value = SEND_MODEL;
     levels = summary.levels;
     $("level-ticks").replaceChildren(
       ...levels.map(({ name }) => {
@@ -407,7 +602,13 @@ function renderSummary(summary) {
   }
 }
 
+function renderSimulated(on) {
+  $("simulated-banner").hidden = !on;
+  $("simulated-on").hidden = on || !viewer;
+}
+
 async function refresh() {
+  const version = settingsVersion;
   const [summary, history, board, roasts] = await Promise.all([
     api("/api/summary"),
     api("/api/history"),
@@ -415,9 +616,14 @@ async function refresh() {
     api("/api/roasts"),
   ]);
   renderSummary(summary);
+  // A poll that started before a toggle carries the old value, so it must not undo the click.
+  if (version === settingsVersion) renderSimulated(summary.simulated);
+  roastRuns = roasts;
   renderCalls(history);
   renderBoard(board);
-  updateRoasts(roasts);
+  // Keep the user list current, so users made elsewhere (such as a demo signup) show up. Skip it
+  // while someone is typing in the table, so a redraw can't wipe an edit in progress.
+  if (!$("users-view").hidden && !$("user-rows").contains(document.activeElement)) await loadUsers();
 }
 
 async function refreshQuietly() {
@@ -444,106 +650,93 @@ async function withBusy(button, statusElement, busyText, work) {
   }
 }
 
-// ---- Roast results, shared on the server with everyone who can see the call
+// ---- Roast modal. Roasts are shared on the server with everyone who can see the call
 
-function recommendationText({ label, reason, decided_by: decidedBy }) {
-  const judged = decidedBy ? ` Judged by ${decidedBy}.` : "";
-  return `${label}. ${reason}${judged}`;
+function recommendationWhy({ reason, decided_by: decidedBy }) {
+  return decidedBy ? `${reason} Judged by ${decidedBy}.` : reason;
 }
 
-function renderRun(run) {
-  const details = element("details", "run");
-  details.dataset.id = run.id;
-  details.open = run.id === selectedRoast;
-  details.classList.toggle("selected", run.id === selectedRoast);
-  const score = element("span", "run-score", run.score);
-  score.append(element("small", "", " out of 100"));
-  const time = new Date(run.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const summary = element("summary");
-  const tags = element("span", "run-tags");
-  tags.append(run.source === "live" ? `Claude Code · ${run.developer}` : `Roasted by ${run.developer}`);
-  if (run.simulated) tags.append(" · ", element("span", "sim", "Simulated"));
-  summary.append(score, element("span", "run-prompt", run.prompt), element("span", "run-time", time), tags);
-  details.addEventListener("toggle", () => {
-    if (details.open) selectedRoast = run.id;
-  });
+function roastTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 
+function openRoastDialog(prompt, busyText) {
+  $("roast-meta").textContent = "";
+  $("roast-prompt").textContent = prompt || "";
+  $("roast-prompt").hidden = !prompt;
+  $("roast-body").replaceChildren();
+  setStatus($("roast-status"), busyText);
+  if (!$("roast-dialog").open) $("roast-dialog").showModal();
+}
+
+function showRoast(run) {
+  openRoastDialog(run.prompt, "");
+  const source = run.source === "live" ? `Claude Code · ${run.developer}` : `Roasted by ${run.developer}`;
+  $("roast-meta").textContent = `${source} · ${roastTime(run.ts)}${run.simulated ? " · Simulated" : ""}`;
+  const body = $("roast-body");
+  body.append(
+    element("h3", "", "Recommended model"),
+    element("p", "", `${run.recommendation.label}. ${recommendationWhy(run.recommendation)}`),
+    element("h3", "", "Issues found"),
+  );
   const issues = element("ul");
   for (const issue of run.issues.length ? run.issues : ["No issues found."]) {
     issues.append(element("li", "", issue));
   }
-  const verdict = element("div", "verdict");
-  verdict.append(element("h3", "", "Issues found"), issues);
-  if (run.fix) verdict.append(element("h3", "", "Suggested fix"), element("p", "", run.fix));
-  verdict.append(
-    element("h3", "", "Recommended model"),
-    element("p", "", recommendationText(run.recommendation)),
-  );
+  body.append(issues);
+  if (run.fix) body.append(element("h3", "", "Suggested fix"), element("p", "", run.fix));
   if (run.receipt) {
     const { model, cost_usd: cost, note } = run.receipt;
-    verdict.append(element("h3", "", "Receipt"), element("p", "", `${model}, ${money(cost)}. ${note}`));
-  } else {
-    verdict.append(element("p", "hint", "Scored by rules as the prompt was sent, so no fix was written. Click Roast on the call for one."));
+    body.append(element("h3", "", "Receipt"), element("p", "", `${model}, ${money(cost)}. ${note}`));
   }
-  details.append(summary, verdict);
-  return details;
 }
 
-function renderRoasts() {
-  $("roast-count").textContent = roastRuns.length === 1 ? "1 run" : `${roastRuns.length} runs`;
-  $("roasts-empty").hidden = roastRuns.length > 0;
-  $("roast-runs").replaceChildren(...roastRuns.map(renderRun));
+// Opens the modal at once, then fills it when Haiku answers.
+async function roastInModal(button, prompt, request) {
+  button.disabled = true;
+  openRoastDialog(prompt, "Roasting with Haiku 5.5");
+  try {
+    const result = await request();
+    roastRuns = [result, ...roastRuns.filter((run) => run.id !== result.id)];
+    if ($("roast-dialog").open) showRoast(result);
+    return result;
+  } catch (error) {
+    if (!(error instanceof SignedOut)) setStatus($("roast-status"), error.message, true);
+    return null;
+  } finally {
+    button.disabled = false;
+    await refreshQuietly();
+  }
 }
 
-// Only redraw when the list changes, so a run someone opened stays open between polls.
-function updateRoasts(rows) {
-  const key = rows.map((row) => row.id).join(",");
-  if (key === roastKey) return;
-  const newest = rows[0]?.id;
-  const grew = newest !== undefined && newest !== roastRuns[0]?.id;
-  roastKey = key;
-  roastRuns = rows;
-  if (grew && selectedRoast === null) selectedRoast = newest;
-  renderRoasts();
+function roastCall(callId, button, prompt) {
+  roastInModal(button, prompt, () => api(`/api/calls/${callId}/roast`, { method: "POST" }));
 }
 
-function selectRoast(id) {
-  selectedRoast = id;
-  renderRoasts();
-  document.querySelector(`.run[data-id="${id}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+function roastRun(roastId, button) {
+  const run = roastRuns.find((item) => item.id === roastId);
+  roastInModal(button, run?.prompt, () => api(`/api/roasts/${roastId}/roast`, { method: "POST" }));
 }
 
-async function addRoast(result) {
-  roastKey = "";
-  roastRuns = [result, ...roastRuns.filter((run) => run.id !== result.id)];
-  selectRoast(result.id);
-}
-
-function roastCall(callId, button) {
-  withBusy(button, $("form-status"), "Roasting the call", async () => {
-    const result = await api(`/api/calls/${callId}/roast`, { method: "POST" });
-    await addRoast(result);
-    setStatus($("form-status"), `Roast finished: ${result.score} out of 100.`);
-  });
-}
+$("roast-close").addEventListener("click", () => $("roast-dialog").close());
+$("roast-dialog").addEventListener("click", (event) => {
+  // A click on the backdrop lands on the dialog itself.
+  if (event.target === $("roast-dialog")) $("roast-dialog").close();
+});
 
 // ---- Composer
 
-$("call-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  clearOffer();
+// Before a roast, Run this prompt sends Opus and Use recommended model may move it. After a roast,
+// the menu beside it picks the model, and that pick is kept.
+function runPrompt(button, model, keep_model) {
   $("reply").hidden = true;
-  const model = $("model").value;
-  const keep_model = keepNext;
-  keepNext = false;
-  withBusy($("send"), $("form-status"), "Sending call", async () => {
+  withBusy(button, $("form-status"), "Running prompt", async () => {
     const payload = { model, prompt: $("prompt").value, keep_model };
     // Only all-access users choose who a call is for. Everyone else sends as themselves.
     if (viewer?.can_manage) {
       payload.developer_id = $("developer").value ? Number($("developer").value) : null;
     }
     const result = await api("/api/playground", { method: "POST", body: JSON.stringify(payload) });
-    if (result.call.model !== model) offerOverride(model);
     const failed = ["Blocked by budget", "Demo limit reached", "Error"].includes(result.status);
     setStatus($("form-status"), failed ? result.message : `Call finished: ${result.status}`, failed);
     if (result.reply) {
@@ -551,34 +744,29 @@ $("call-form").addEventListener("submit", (event) => {
       $("reply").hidden = false;
     }
   });
-});
-
-$("simple-task").addEventListener("click", () => {
-  clearOffer();
-  $("prompt").value = EXAMPLES.simple;
-  $("prompt").focus();
-});
-$("real-design").addEventListener("click", () => {
-  clearOffer();
-  $("prompt").value = EXAMPLES.design;
-  $("prompt").focus();
-});
+}
 
 async function saveSetting(change, done) {
   await api("/api/settings", { method: "PUT", body: JSON.stringify(change) });
   if (done) setStatus($("form-status"), done);
 }
 
-$("simulated").addEventListener("change", async (event) => {
-  const on = event.target.checked;
+async function setSimulated(on, button) {
+  settingsVersion += 1;
+  button.disabled = true;
   try {
     await saveSetting({ simulated: on }, on ? "Simulated responses are on." : "Real Claude calls are on.");
-    $("simulated-banner").hidden = !on;
+    renderSimulated(on);
   } catch (error) {
-    event.target.checked = !on;
-    setStatus($("form-status"), error.message, true);
+    if (!(error instanceof SignedOut)) setStatus($("form-status"), error.message, true);
+  } finally {
+    button.disabled = false;
+    settingsVersion += 1;
   }
-});
+}
+
+$("simulated-on").addEventListener("click", () => setSimulated(true, $("simulated-on")));
+$("simulated-off").addEventListener("click", () => setSimulated(false, $("simulated-off")));
 
 $("use-recommended").addEventListener("change", async (event) => {
   const on = event.target.checked;
@@ -600,7 +788,7 @@ $("level").addEventListener("change", async (event) => {
   try {
     const { name } = levels.find(({ level }) => level === value);
     await saveSetting({ level: value }, `Routing level set to ${name}.`);
-    clearOffer();
+    clearRecommendation();
   } catch (error) {
     setStatus($("form-status"), error.message, true);
   } finally {
@@ -623,20 +811,21 @@ $("reset").addEventListener("click", () => {
     newestSeen = 0;
     $("prompt").value = "";
     $("reply").hidden = true;
-    clearOffer();
+    clearRecommendation();
     roastRuns = [];
-    roastKey = "";
-    selectedRoast = null;
-    renderRoasts();
     setStatus($("form-status"), "Demo reset.");
   });
 });
 
-$("edit-budget").addEventListener("click", () => {
+function openBudgetDialog() {
   $("budget-input").value = $("budget").textContent.replace("$", "");
   setStatus($("budget-error"), "");
   $("budget-dialog").showModal();
-});
+}
+
+$("edit-budget").addEventListener("click", openBudgetDialog);
+$("team-edit-budget").addEventListener("click", openBudgetDialog);
+$("stale-reload").addEventListener("click", () => location.reload());
 $("budget-cancel").addEventListener("click", () => $("budget-dialog").close());
 
 $("budget-form").addEventListener("submit", async (event) => {
@@ -650,57 +839,48 @@ $("budget-form").addEventListener("submit", async (event) => {
   }
 });
 
-function modelLabel(id) {
-  return [...$("model").options].find((option) => option.value === id)?.text ?? id;
+// After a roast, the Roast button becomes Run on recommended model, and Run this prompt gets a
+// model menu. Editing the prompt puts both back, since a roast only fits the prompt it read.
+function showRecommendation({ model, label, reason, decided_by: decidedBy }) {
+  recommendedModel = model;
+  $("roast-send").textContent = "Run on recommended model";
+  $("roast-send").title = `${label}. ${recommendationWhy({ reason, decided_by: decidedBy })}`;
+  $("run-model").hidden = false;
 }
 
-function clearOffer() {
-  pickedModel = null;
-  $("recommend").hidden = true;
-  $("use-anyway").hidden = true;
+function clearRecommendation() {
+  recommendedModel = null;
+  $("roast-send").textContent = "Roast this prompt";
+  $("roast-send").title = "";
+  $("run-model").hidden = true;
+  $("run-model").value = SEND_MODEL;
 }
 
-function offerOverride(model) {
-  pickedModel = model;
-  $("use-anyway").textContent = `Use ${modelLabel(model)} anyway`;
-  $("use-anyway").hidden = false;
-}
-
-function offerModel({ model, label, reason }) {
-  // Roasting the same prompt twice must still remember the model the person chose.
-  pickedModel ??= $("model").value;
-  const differs = pickedModel !== model;
-  $("model").value = model;
-  $("recommend").textContent = differs
-    ? `Recommended: ${label}. ${reason}`
-    : `${label} is already the recommended model. ${reason}`;
-  $("recommend").hidden = false;
-  $("use-anyway").textContent = `Use ${modelLabel(pickedModel)} anyway`;
-  $("use-anyway").hidden = !differs;
-}
-
-$("use-anyway").addEventListener("click", () => {
-  $("model").value = pickedModel;
-  keepNext = true;
-  $("call-form").requestSubmit();
+$("prompt").addEventListener("input", () => {
+  if (recommendedModel) clearRecommendation();
 });
 
-// The recommendation only applies to the prompt and model it was made for.
-$("prompt").addEventListener("input", clearOffer);
-$("model").addEventListener("change", clearOffer);
+$("call-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const picked = !$("run-model").hidden;
+  runPrompt($("send"), picked ? $("run-model").value : SEND_MODEL, picked);
+});
 
 $("roast-send").addEventListener("click", () => {
+  if (recommendedModel) {
+    runPrompt($("roast-send"), recommendedModel, true);
+    return;
+  }
   const text = $("prompt").value;
   $("reply").hidden = true;
-  withBusy($("roast-send"), $("form-status"), "Roasting", async () => {
-    const result = await api("/api/roast", { method: "POST", body: JSON.stringify({ text }) });
-    await addRoast(result);
-    offerModel(result.recommendation);
-    setStatus($("form-status"), `Roast finished: ${result.score} out of 100.`);
+  roastInModal($("roast-send"), text, () =>
+    api("/api/roast", { method: "POST", body: JSON.stringify({ text }) }),
+  ).then((result) => {
+    if (result) showRecommendation(result.recommendation);
   });
 });
 
-// ---- Users. Only all-access viewers see this section, and the server checks it too.
+// ---- Users. For the demo, anyone signed in can manage users on the User management view.
 
 function accessSelect(value) {
   const select = element("select");
@@ -717,7 +897,7 @@ async function updateUser(user, change, describe) {
     await refreshQuietly();
   } catch (error) {
     if (!(error instanceof SignedOut)) setStatus($("users-status"), error.message, true);
-    await loadUsers();
+    await loadUsers(true);
   }
 }
 
@@ -729,7 +909,19 @@ function showToken(issued, verb) {
   $("token-box").scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
+function usersMessage(text, bad = false) {
+  const td = cell(text, bad ? "empty bad" : "empty");
+  td.colSpan = 7;
+  const row = document.createElement("tr");
+  row.append(td);
+  $("user-rows").replaceChildren(row);
+}
+
 function renderUsers(users) {
+  if (!users.length) {
+    usersMessage("No users yet. Add one below.");
+    return;
+  }
   $("user-rows").replaceChildren(
     ...users.map((user) => {
       const row = document.createElement("tr");
@@ -754,6 +946,24 @@ function renderUsers(users) {
       level.addEventListener("change", () =>
         updateUser(user, { access: level.value }, (saved) =>
           `${saved.name} now has ${ACCESS_NAMES[saved.access]} access.`));
+
+      const budget = element("span", "user-budget");
+      const budgetInput = element("input");
+      budgetInput.type = "number";
+      budgetInput.min = "0";
+      budgetInput.step = "0.01";
+      budgetInput.inputMode = "decimal";
+      budgetInput.placeholder = "No limit";
+      budgetInput.value = user.budget_usd ?? "";
+      budgetInput.setAttribute("aria-label", `Budget in dollars for ${user.name}`);
+      budgetInput.addEventListener("change", () => {
+        const value = budgetInput.value.trim() === "" ? null : Number(budgetInput.value);
+        updateUser(user, { budget_usd: value }, (saved) =>
+          saved.budget_usd === null
+            ? `${saved.name} has no budget of their own.`
+            : `${saved.name}'s budget is ${money(saved.budget_usd)}.`);
+      });
+      budget.append(budgetInput, element("small", "hint", `${money(user.spent_usd)} spent`));
 
       const swaps = element("input");
       swaps.type = "checkbox";
@@ -782,7 +992,7 @@ function renderUsers(users) {
         }
       });
 
-      const tds = [name, team, level, swaps, password, regenerate].map((control) => {
+      const tds = [name, team, level, budget, swaps, password, regenerate].map((control) => {
         const td = cell("");
         td.append(control);
         return td;
@@ -814,18 +1024,45 @@ $("password-form").addEventListener("submit", async (event) => {
     });
     $("password-dialog").close();
     setStatus($("users-status"), `Password set for ${passwordUser.name}.`);
-    await loadUsers();
+    await loadUsers(true);
   } catch (error) {
     if (!(error instanceof SignedOut)) setStatus($("password-error"), error.message, true);
   }
 });
 
-async function loadUsers() {
-  if (!viewer?.can_manage) return;
+// User management is its own view at #users. For the demo, anyone signed in can use it.
+function showView() {
+  const users = location.hash === "#users";
+  $("users-view").hidden = !users;
+  $("dashboard").hidden = users;
+  $("users-link").classList.toggle("current", users);
+  if (users && viewer) loadUsers(true);
+}
+
+window.addEventListener("hashchange", showView);
+
+$("roast-info").addEventListener("click", () => {
+  const open = $("roast-help").hidden;
+  $("roast-help").hidden = !open;
+  $("roast-info").setAttribute("aria-expanded", String(open));
+});
+
+let shownUsers = "";
+
+async function loadUsers(force = false) {
+  if (!viewer) return;
   try {
-    renderUsers(await api("/api/users"));
+    const users = await api("/api/users");
+    // Redraw only on a change, so the 2-second poll leaves open menus and buttons alone.
+    const key = JSON.stringify(users);
+    if (!force && key === shownUsers && $("user-rows").children.length) return;
+    shownUsers = key;
+    renderUsers(users);
   } catch (error) {
-    if (!(error instanceof SignedOut)) setStatus($("users-status"), error.message, true);
+    if (error instanceof SignedOut) return;
+    // Say it in the table, so a failed load never looks like an empty list.
+    shownUsers = "";
+    usersMessage(`Couldn't load users: ${error.message}`, true);
   }
 }
 
@@ -839,13 +1076,15 @@ $("user-form").addEventListener("submit", (event) => {
         team: $("new-team").value,
         access: $("new-access").value,
         password: $("new-password").value,
+        budget_usd: $("new-budget").value.trim() === "" ? null : Number($("new-budget").value),
       }),
     });
     $("new-name").value = "";
     $("new-password").value = "";
+    $("new-budget").value = "";
     showToken(issued, "First");
     setStatus($("users-status"), `Created ${issued.user.name}.`);
-    await loadUsers();
+    await loadUsers(true);
   });
 });
 
@@ -859,6 +1098,5 @@ $("token-copy").addEventListener("click", async () => {
   }
 });
 
-renderRoasts();
 loadSignInOptions();
 start();
