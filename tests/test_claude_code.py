@@ -199,6 +199,13 @@ def test_swap_changes_only_the_model_and_lasts_the_whole_prompt(client, anthropi
     assert history[0]["used_label"] == "Haiku 5.5"
     assert history[0]["ideal_label"] == "Haiku 5.5"
     assert history[0]["prompt"] == "Commit and push"
+    # The expanded row lists each call of the prompt, oldest first, under a key that stays put.
+    details = history[0]["details"]
+    assert [d["id"] for d in details] == [oldest["id"], newest["id"]]
+    assert all(d["used_label"] == "Haiku 5.5" and d["status"] == "Downshifted" for d in details)
+    assert details[0]["input_tokens"] == oldest["input_tokens"]
+    assert history[0]["key"] == oldest["prompt_id"]
+    assert history[0]["prompt_text"] == "Commit and push"
 
 
 def test_each_new_prompt_gets_its_own_decision(client, anthropic, developer):

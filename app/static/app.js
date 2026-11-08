@@ -24,6 +24,8 @@ const ACCESS_NAMES = { self: "Self", team: "Team", all: "All" };
 const TOKEN_KEY = "cavedawg.token";
 
 let newestSeen = 0;
+// Live calls rows the viewer has opened, by row key, so a poll's redraw keeps them open.
+const openCalls = new Set();
 let modelsLoaded = false;
 let modelLabels = {};
 let recommendedModel = null;
@@ -279,20 +281,109 @@ function roastCell(call) {
   return td;
 }
 
+function clockTime(ts, seconds = false) {
+  const options = { hour: "numeric", minute: "2-digit" };
+  if (seconds) options.second = "2-digit";
+  return new Date(ts).toLocaleTimeString([], options);
+}
+
+function detailPair(list, name, value) {
+  if (value === "" || value === null || value === undefined) return;
+  list.append(element("dt", "", name), element("dd", "", String(value)));
+}
+
+const DETAIL_NUMBERS = ["Input", "Output", "Cache read", "Cache write", "Cost", "Saved"];
+
+function callDetails(call) {
+  const box = element("div", "call-details");
+  const facts = element("dl", "detail-facts");
+  detailPair(facts, "Started", new Date(call.ts).toLocaleString());
+  detailPair(facts, "Developer", call.developer);
+  detailPair(facts, "Task kind", call.kind);
+  detailPair(facts, "Requested model", call.requested_label);
+  detailPair(facts, "Used model", call.used_label);
+  detailPair(facts, "Recommended model", call.ideal_label || "Not rated");
+  detailPair(facts, "Judged by", call.decided_by);
+  detailPair(facts, "Calls", call.calls);
+  detailPair(facts, "Tokens", (call.tokens || 0).toLocaleString());
+  detailPair(facts, "Cost", money(call.cost_usd));
+  box.append(facts);
+
+  const words = call.prompt_text || call.prompt;
+  if (words) {
+    box.append(element("h3", "detail-title", "Prompt"), element("pre", "detail-prompt", words));
+  }
+
+  const parts = call.details || [];
+  if (!parts.length) return box;
+  box.append(element("h3", "detail-title", parts.length > 1 ? `Calls in this prompt (${parts.length})` : "Call"));
+  const head = element("tr");
+  for (const name of ["Time", "Source", "Model", ...DETAIL_NUMBERS.slice(0, 4), "Cost", "Saved", "Result"]) {
+    const th = element("th", DETAIL_NUMBERS.includes(name) ? "num" : "", name);
+    th.scope = "col";
+    head.append(th);
+  }
+  const thead = element("thead");
+  thead.append(head);
+  const tbody = element("tbody");
+  for (const part of parts) {
+    const source = part.request_class ? `${part.source} · ${part.request_class}` : part.source;
+    const model = cell(part.used_label);
+    if (part.requested_label && part.requested_label !== part.used_label) {
+      model.append(element("span", "row-note", `Asked for ${part.requested_label}`));
+    }
+    const result = cell("", "status");
+    result.append(element("span", `stamp ${STAMPS[part.status] || "ok"}`, part.status));
+    if (part.reason) result.append(element("span", "row-note", part.reason));
+    if (part.simulated) result.append(element("span", "row-note sim", "Simulated"));
+    const tr = element("tr");
+    tr.append(
+      cell(clockTime(part.ts, true)),
+      cell(source),
+      model,
+      cell(part.input_tokens.toLocaleString(), "num"),
+      cell(part.output_tokens.toLocaleString(), "num"),
+      cell(part.cache_read_tokens.toLocaleString(), "num"),
+      cell(part.cache_write_tokens.toLocaleString(), "num"),
+      cell(money(part.cost_usd), "num"),
+      cell(part.saved_usd ? money(part.saved_usd) : "–", "num"),
+      result,
+    );
+    tbody.append(tr);
+  }
+  const table = element("table", "detail-calls");
+  table.append(thead, tbody);
+  const scroll = element("div", "ledger-scroll");
+  scroll.append(table);
+  box.append(scroll);
+  return box;
+}
+
+function toggleCall(row) {
+  const key = row.dataset.key;
+  if (openCalls.has(key)) openCalls.delete(key);
+  else openCalls.add(key);
+  const open = openCalls.has(key);
+  row.setAttribute("aria-expanded", String(open));
+  row.nextElementSibling.hidden = !open;
+}
+
 function renderCalls(rows) {
   const body = $("calls");
   body.replaceChildren(
-    ...rows.map((call) => {
+    ...rows.flatMap((call) => {
+      const key = call.key || String(call.id);
+      const open = openCalls.has(key);
       const row = document.createElement("tr");
-      if (call.id > newestSeen) row.className = "new";
-      const time = new Date(call.ts).toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      });
+      row.className = "call-row";
+      if (call.id > newestSeen) row.classList.add("new");
+      row.dataset.key = key;
+      row.tabIndex = 0;
+      row.title = "Click to show this call's details";
+      row.setAttribute("aria-expanded", String(open));
       const recommended = cell(call.ideal_label || "Not rated");
       if (call.decided_by) recommended.append(element("span", "row-note", `Judged by ${call.decided_by}`));
       const results = cell("", "status");
-      results.title = call.prompt || "";
       results.append(element("span", `stamp ${STAMPS[call.status] || "ok"}`, call.status));
       if (["Error", "Dropped", "Swap failed"].includes(call.status)) {
         results.append(element("span", "row-note", call.reason));
@@ -303,8 +394,26 @@ function renderCalls(rows) {
         element("span", "row-note", `${call.cost_usd ? money(call.cost_usd) : "$0"} · ${tokens}${calls}`),
       );
       if (call.simulated) results.append(element("span", "row-note sim", "Simulated"));
-      row.append(cell(time), cell(call.developer), cell(call.used_label), recommended, results, roastCell(call));
-      return row;
+      const time = cell("");
+      time.append(element("span", "call-caret"), document.createTextNode(clockTime(call.ts)));
+      row.append(time, cell(call.developer), cell(call.used_label), recommended, results, roastCell(call));
+      // The Roast button keeps its own click. Anywhere else on the row opens the details.
+      row.addEventListener("click", (event) => {
+        if (!event.target.closest("button, a")) toggleCall(row);
+      });
+      row.addEventListener("keydown", (event) => {
+        if (event.target !== row || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        toggleCall(row);
+      });
+
+      const detail = element("tr", "call-detail-row");
+      detail.hidden = !open;
+      const td = cell("");
+      td.colSpan = 6;
+      td.append(callDetails(call));
+      detail.append(td);
+      return [row, detail];
     }),
   );
   newestSeen = rows.reduce((max, call) => Math.max(max, call.id), newestSeen);

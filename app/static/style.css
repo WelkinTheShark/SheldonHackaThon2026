@@ -324,6 +324,52 @@ td.prompt { min-width: 8rem; max-width: 12rem; white-space: normal; overflow-wra
 .calls-scroll { max-height: 28rem; overflow: auto; border-bottom: 1px solid var(--border-sandstone); }
 .calls-scroll thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-slate-card); }
 
+/* Each Live calls row opens a details row under it. */
+#calls tr.call-row { cursor: pointer; }
+#calls tr.call-row:focus-visible { outline: 2px solid var(--pigment-circuit-gold); outline-offset: -2px; }
+.call-caret {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: .45rem;
+  border-top: .3rem solid transparent;
+  border-bottom: .3rem solid transparent;
+  border-left: .4rem solid var(--text-granite);
+  transition: transform .15s ease-out;
+}
+#calls tr.call-row[aria-expanded="true"] .call-caret { transform: rotate(90deg); }
+#calls tr.call-row[aria-expanded="true"] > td { border-bottom-color: transparent; }
+#calls tr.call-detail-row > td,
+#calls tr.call-detail-row:hover > td { padding: 0 0 .9rem; white-space: normal; background: var(--bg-slate-recessed); }
+.call-details { padding: .6rem .9rem 0; }
+.detail-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .5rem 1rem; margin: 0; }
+.detail-facts dt, .detail-title {
+  color: var(--text-granite);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.detail-facts dd { margin: .1rem 0 0; overflow-wrap: anywhere; }
+.detail-title { margin: .9rem 0 .35rem; }
+.detail-prompt {
+  max-height: 10rem;
+  margin: 0;
+  padding: .5rem .65rem;
+  overflow: auto;
+  border: 1px solid var(--border-sandstone);
+  border-radius: var(--radius-card);
+  background: var(--bg-slate-card);
+  font: .85rem/1.45 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.detail-calls { font-size: .85rem; }
+.calls-scroll .detail-calls thead th { position: static; background: none; }
+.detail-calls td { padding: .4rem .6rem .4rem 0; }
+.detail-calls tbody tr:hover td { background: none; }
+#calls .detail-calls td:first-child { color: inherit; }
+
 /* ---- Status badges: small, flat, rectangular. No rotation. */
 .stamp {
   display: inline-block;

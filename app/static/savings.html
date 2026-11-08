@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CaveDawg Savings Sheet</title>
+<link rel="icon" type="image/png" href="/static/brand/favicon.png">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  /* A static data sheet on the app's tokens (style.css). Every figure is worked out from
+     app/config.py prices and routing; see "How the numbers are made" at the bottom. */
+  .sheet { max-width: 60rem; margin: 0 auto; padding: 1.75rem clamp(1rem, 4vw, 2.5rem) 4rem; }
+  .sheet h1 { margin: 0; font-size: clamp(1.7rem, 3.6vw, 2.5rem); letter-spacing: -.02em; }
+  .sheet h2 { margin: 2.25rem 0 .35rem; font-size: 1.2rem; }
+  .sheet h2 .step { color: var(--pigment-circuit-gold); font-family: var(--font-mono); margin-right: .4rem; }
+  .lede { max-width: 60ch; margin: .6rem 0 0; color: var(--text-granite); font-size: 1.05rem; }
+  .sub { margin: 0 0 .75rem; color: var(--text-granite); }
+  .card { background: var(--bg-slate-card); border: 1px solid var(--border-sandstone); border-radius: var(--radius-card); padding: 1rem 1.2rem; }
+
+  .hero { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-top: 1.5rem; }
+  .hero .card { border-top-width: 2px; }
+  .hero .today { border-top-color: var(--pigment-ochre); }
+  .hero .after { border-top-color: var(--pigment-circuit-gold); }
+  .hero .saved { border-top-color: var(--pigment-malachite); }
+  .label { margin: 0; color: var(--text-granite); font-size: .78rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+  .big { margin: .3rem 0 .1rem; font: 800 clamp(1.8rem, 4vw, 2.6rem)/1.05 var(--font-mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .today .big { color: var(--ochre-text); }
+  .after .big { color: var(--pigment-circuit-gold); }
+  .saved .big { color: var(--malachite-text); }
+  .small { margin: 0; color: var(--text-granite); font-size: .9rem; }
+
+  table.sheet-table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  .sheet-table th { white-space: nowrap; }
+  .sheet-table th + th, .sheet-table td + td { padding-left: 1.25rem; }
+  .sheet-table td { white-space: normal; vertical-align: top; }
+  .sheet-table td.num, .sheet-table th.num { text-align: right; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .sheet-table tr.total td { border-top: 1px solid var(--border-sandstone-lit); color: var(--text-chalk); font-weight: 700; }
+  .sheet-table tr.highlight td { color: var(--pigment-circuit-gold); font-weight: 700; }
+  .sheet-table .save { color: var(--malachite-text); }
+  .sheet-table .muted { color: var(--text-granite); }
+  .formula { color: var(--text-granite); font: .85rem var(--font-mono); }
+
+  .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+  .bar { height: .7rem; margin-top: .5rem; background: var(--bg-slate-recessed); border: 1px solid var(--border-sandstone); border-radius: var(--radius-card); overflow: hidden; }
+  .bar > span { display: block; height: 100%; }
+  .notes { margin: .5rem 0 0; padding-left: 1.1rem; color: var(--text-granite); }
+  .notes li { margin: .3rem 0; }
+  .topnav { display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; }
+
+  @media (max-width: 720px) { .hero, .split { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div class="cave-perimeter-frame" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="topnav">
+    <a href="/" class="brand-lockup" aria-label="CaveDawg dashboard">
+      <img class="brand-dog" src="/static/brand/logo-mark.png" width="85" height="60" alt="">
+      <img class="brand-word" src="/static/brand/logo-word.png" width="119" height="28" alt="CaveDawg">
+    </a>
+    <a class="quiet" href="/">Back to dashboard</a>
+  </div>
+</header>
+
+<main class="sheet">
+  <h1>CaveDawg savings sheet</h1>
+  <p class="lede">A 25-developer team using Claude Code, with everything on Opus 5.5 today. CaveDawg sends
+    each prompt to the cheapest model that can do it and stops agents stuck in retry loops.</p>
+
+  <section class="hero" aria-label="Monthly result">
+    <div class="card today"><p class="label">Today</p><p class="big">$12,570</p><p class="small">per month, all on Opus 5.5</p></div>
+    <div class="card after"><p class="label">With CaveDawg</p><p class="big">$5,958</p><p class="small">per month, Balanced routing</p></div>
+    <div class="card saved"><p class="label">Saved</p><p class="big">$6,612</p><p class="small">a month: 53% less, about $79,000 a year</p></div>
+  </section>
+
+  <h2><span class="step">1</span>The team</h2>
+  <p class="sub">The only inputs. Everything below is worked out from these and CaveDawg's own prices.</p>
+  <div class="card">
+    <table class="sheet-table">
+      <tbody>
+        <tr><td>Developers</td><td class="num">25</td></tr>
+        <tr><td>Prompts per developer per day</td><td class="num">40</td></tr>
+        <tr><td>API calls per prompt (Claude Code's tool rounds)</td><td class="num">8</td></tr>
+        <tr><td>Working days per month</td><td class="num">21</td></tr>
+        <tr><td>Tokens per call: input, of which 70% is cached / output</td><td class="num">40,000 / 800</td></tr>
+        <tr><td>Calls CaveDawg judges (subagent and background calls pass through)</td><td class="num">75%</td></tr>
+        <tr><td>Prompts where an agent gets stuck retrying</td><td class="num">3%</td></tr>
+        <tr class="total"><td>Calls per month <span class="formula">25 × 40 × 8 × 21</span></td><td class="num">168,000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="step">2</span>What one call costs</h2>
+  <p class="sub">12,000 fresh input tokens, 28,000 cached, and 800 output, at each model's price per million tokens.</p>
+  <div class="card">
+    <table class="sheet-table">
+      <thead><tr><th scope="col">Model</th><th scope="col" class="num">Input / cached / output</th><th scope="col" class="num">One call</th><th scope="col" class="num">vs Opus</th></tr></thead>
+      <tbody>
+        <tr><td>Opus 5.5</td><td class="num">$4 / $0.20 / $20</td><td class="num">$0.0696</td><td class="num muted">–</td></tr>
+        <tr><td>Sonnet 5.5</td><td class="num">$2 / $0.10 / $10</td><td class="num">$0.0348</td><td class="num save">50% less</td></tr>
+        <tr><td>Haiku 5.5</td><td class="num">$0.10 / $0.01 / $0.50</td><td class="num">$0.0019</td><td class="num save">97% less</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="step">3</span>Where each prompt goes</h2>
+  <p class="sub">CaveDawg sorts every prompt into a kind and, at the Balanced level, routes it like this.</p>
+  <div class="card">
+    <table class="sheet-table">
+      <thead><tr><th scope="col">Kind of prompt</th><th scope="col">Example</th><th scope="col" class="num">Share</th><th scope="col">Runs on</th><th scope="col" class="num">Per call</th></tr></thead>
+      <tbody>
+        <tr><td>Routine</td><td class="muted">commit message, git push</td><td class="num">25%</td><td>Haiku 5.5</td><td class="num save">$0.0019</td></tr>
+        <tr><td>Simple</td><td class="muted">rename, small edit</td><td class="num">25%</td><td>Haiku 5.5</td><td class="num save">$0.0019</td></tr>
+        <tr><td>Unclear</td><td class="muted">short or vague request</td><td class="num">20%</td><td>Sonnet 5.5</td><td class="num save">$0.0348</td></tr>
+        <tr><td>Heavy</td><td class="muted">debug a failing test</td><td class="num">15%</td><td>Sonnet 5.5</td><td class="num save">$0.0348</td></tr>
+        <tr><td>Deep</td><td class="muted">architecture, design</td><td class="num">15%</td><td>Opus 5.5</td><td class="num">$0.0696</td></tr>
+        <tr class="total"><td colspan="4">Average judged call</td><td class="num">$0.0236</td></tr>
+        <tr class="total"><td colspan="4">Average of all calls <span class="formula">75% × $0.0236 + 25% × $0.0696</span></td><td class="num">$0.0351</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="step">4</span>The month, side by side</h2>
+  <div class="card">
+    <table class="sheet-table">
+      <thead><tr><th scope="col"></th><th scope="col" class="num">Today</th><th scope="col" class="num">With CaveDawg</th></tr></thead>
+      <tbody>
+        <tr><td>Normal calls</td><td class="num">168,000</td><td class="num">168,000</td></tr>
+        <tr><td>Retry-loop calls <span class="formula">630 loops × 20 today, × 3 with CaveDawg</span></td><td class="num">12,600</td><td class="num">1,890</td></tr>
+        <tr><td>Average cost per call</td><td class="num">$0.0696</td><td class="num">$0.0351</td></tr>
+        <tr class="total"><td>Monthly cost</td><td class="num">$12,570</td><td class="num">$5,958</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="step">5</span>Where the $6,612 comes from</h2>
+  <div class="split">
+    <div class="card">
+      <p class="label">Right model for each prompt</p>
+      <p class="big" style="color:var(--malachite-text)">$5,866</p>
+      <p class="small">89% of the saving</p>
+      <div class="bar" aria-hidden="true"><span style="width:89%;background:var(--pigment-malachite)"></span></div>
+    </div>
+    <div class="card">
+      <p class="label">Retry loops stopped after 3 calls</p>
+      <p class="big" style="color:var(--malachite-text)">$745</p>
+      <p class="small">11% of the saving</p>
+      <div class="bar" aria-hidden="true"><span style="width:11%;background:var(--pigment-malachite)"></span></div>
+    </div>
+  </div>
+
+  <h2><span class="step">6</span>Choose how hard to route</h2>
+  <p class="sub">The routing level trades savings for keeping more work on the big models. Same team, same month.</p>
+  <div class="card">
+    <table class="sheet-table">
+      <thead><tr><th scope="col">Level</th><th scope="col">What changes</th><th scope="col" class="num">Monthly cost</th><th scope="col" class="num">Saved</th></tr></thead>
+      <tbody>
+        <tr><td>Fastest</td><td class="muted">Unclear work on Haiku, design on Sonnet</td><td class="num">$4,454</td><td class="num save">$8,116 (65%)</td></tr>
+        <tr class="highlight"><td>Balanced</td><td>The default, used above</td><td class="num">$5,958</td><td class="num">$6,612 (53%)</td></tr>
+        <tr><td>Thorough</td><td class="muted">Unclear and heavy work on Opus</td><td class="num">$8,559</td><td class="num save">$4,011 (32%)</td></tr>
+        <tr><td>Full power</td><td class="muted">Only routine work leaves Opus</td><td class="num">$9,667</td><td class="num save">$2,903 (23%)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="step">7</span>At other team sizes</h2>
+  <p class="sub">The saving scales with the team: about $264 per developer per month at Balanced.</p>
+  <div class="card">
+    <table class="sheet-table">
+      <thead><tr><th scope="col">Developers</th><th scope="col" class="num">Saved per month</th><th scope="col" class="num">Saved per year</th></tr></thead>
+      <tbody>
+        <tr><td>10</td><td class="num save">$2,645</td><td class="num">$31,736</td></tr>
+        <tr class="highlight"><td>25</td><td class="num">$6,612</td><td class="num">$79,341</td></tr>
+        <tr><td>50</td><td class="num save">$13,223</td><td class="num">$158,681</td></tr>
+        <tr><td>100</td><td class="num save">$26,447</td><td class="num">$317,362</td></tr>
+        <tr><td>250</td><td class="num save">$66,117</td><td class="num">$793,406</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>How the numbers are made</h2>
+  <ul class="notes">
+    <li>Prices and routing come from CaveDawg's own settings (<code>app/config.py</code>), the same ones the proxy bills and routes with. Cached input is priced at the cache-read rate.</li>
+    <li>A prompt keeps one model for all of its tool rounds. Calls CaveDawg doesn't judge stay on Opus.</li>
+    <li>A stuck agent is assumed to burn 20 calls before anyone notices; CaveDawg stops it after 3.</li>
+    <li>Budgets cap the worst case rather than lower the average, so they add nothing to these figures.</li>
+    <li>This is an estimate for the team described in step 1, not a bill. The task mix and token sizes move the result the most.</li>
+  </ul>
+</main>
+</body>
+</html>

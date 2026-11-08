@@ -57,6 +57,30 @@ def _visible(call: dict, scope: set | None) -> bool:
     return scope is None or call["developer_id"] in scope
 
 
+def _call_detail(call: dict) -> dict:
+    """One call inside a history row, for the row's expanded view."""
+    return {
+        "id": call["id"],
+        "ts": call["ts"],
+        "source": call["source"],
+        "request_class": call["request_class"],
+        "requested_label": label(call["requested_model"]),
+        "used_label": label(call["model"]),
+        "ideal_label": label(call["ideal_model"]) if call["ideal_model"] else "",
+        "kind": call["task_kind"],
+        "decided_by": call["decided_by"],
+        "input_tokens": call["input_tokens"],
+        "output_tokens": call["output_tokens"],
+        "cache_read_tokens": call["cache_read_tokens"],
+        "cache_write_tokens": call["cache_write_tokens"],
+        "cost_usd": call["cost_usd"],
+        "saved_usd": call["saved_usd"],
+        "status": call["status"],
+        "reason": call["reason"],
+        "simulated": bool(call["simulated"]),
+    }
+
+
 def history(limit: int = config.HISTORY_LIMIT, scope: set | None = None) -> list[dict]:
     """One row per prompt, newest first. A Claude Code prompt can span many calls."""
     names = _names()
@@ -78,6 +102,8 @@ def history(limit: int = config.HISTORY_LIMIT, scope: set | None = None) -> list
         roast = latest_roast.get(worded["prompt_hash"]) if worded else None
         rows.append({
             "id": calls[-1]["id"],
+            # Stable while later tool rounds join the row, so the page can keep it expanded.
+            "key": _prompt_key(first),
             "ts": first["ts"],
             "developer": names.get(first["developer_id"], UNATTRIBUTED),
             "prompt": next((c["prompt_snippet"] for c in calls if c["prompt_snippet"]), ""),
@@ -94,6 +120,8 @@ def history(limit: int = config.HISTORY_LIMIT, scope: set | None = None) -> list
             "simulated": any(c["simulated"] for c in calls),
             "roast_call_id": worded["id"] if worded else None,
             "roast": {"id": roast["id"], "score": roast["score"]} if roast else None,
+            "prompt_text": worded["prompt_text"] if worded else "",
+            "details": [_call_detail(c) for c in calls],
         })
     rows.sort(key=lambda row: row["id"], reverse=True)
     return rows[:limit]
